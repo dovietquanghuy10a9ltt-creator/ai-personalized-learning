@@ -1,6 +1,6 @@
-#**🧠 AI-Based Personalized Learning Platform**
+# **🧠 AI-Based Personalized Learning Platform**
 ---
-##1️⃣ Giới thiệu
+## 1️⃣ Giới thiệu
 
 AI-Based Personalized Learning Platform là hệ thống học tập cá nhân hóa dựa trên AI Agent, cho phép:
 
@@ -12,7 +12,7 @@ Hỗ trợ hỏi–đáp thông minh dựa trên tài liệu học tập (RAG)
 
 Hệ thống hướng tới việc cá nhân hóa lộ trình học, thay vì áp dụng cùng một nội dung cho mọi người học.
 ---
-##2️⃣ Mục tiêu & Phạm vi
+## 2️⃣ Mục tiêu & Phạm vi
 🎯 Mục tiêu
 
 Xây dựng hệ thống AI Agent hỗ trợ học tập cá nhân hóa
@@ -29,7 +29,7 @@ Backend xử lý nghiệp vụ, AI Agent và dữ liệu
 
 Chưa triển khai ở quy mô thương mại
 ---
-##3️⃣ Công nghệ sử dụng
+## 3️⃣ Công nghệ sử dụng
 Backend
 
 Python 3
@@ -58,7 +58,7 @@ TypeScript
 
 TailwindCSS
 ---
-##4️⃣ Kiến trúc hệ thống
+## 4️⃣ Kiến trúc hệ thống
 Frontend (Web)
       |
       v
@@ -76,7 +76,7 @@ Database & Vector DB
 ➡️ Frontend chỉ giao tiếp với Backend
 ➡️ AI Agent được xử lý hoàn toàn ở Backend
 ---
-##5️⃣ Mô tả các thành phần chính
+## 5️⃣ Mô tả các thành phần chính
 📁 backend/agents
 
 Định nghĩa AI Agent
@@ -113,7 +113,7 @@ Chat với AI
 
 Upload tài liệu học tập
 ---
-##6️⃣ Quy trình hoạt động (Workflow)
+## 6️⃣ Quy trình hoạt động (Workflow)
 
 Người học gửi câu hỏi / yêu cầu
 
@@ -127,7 +127,7 @@ AI Agent tổng hợp & sinh câu trả lời
 
 Kết quả trả về frontend
 ---
-##7️⃣ Cách cài đặt & chạy hệ thống
+## 7️⃣ Cách cài đặt & chạy hệ thống
 🔹 Backend
 ```
 cd backend
@@ -143,7 +143,7 @@ npm install
 npm run dev
 ```
 ---
-##8️⃣ Hướng phát triển
+## 8️⃣ Hướng phát triển
 
 Lưu lịch sử học tập và tiến độ người học
 
@@ -152,3 +152,4 @@ Multi-agent (Tutor Agent, Evaluator Agent)
 Gợi ý lộ trình học tự động
 
 Dashboard phân tích học tập
+
