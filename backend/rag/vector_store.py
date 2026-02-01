@@ -1,21 +1,22 @@
-from rag.embedder import embed_text
+import os
+from langchain_chroma import Chroma
+from rag.embedder import embeddings  # Import bộ xử lý Local
+from config import settings
 
-VECTOR_DB = []
+# Đường dẫn lưu Database
+ABS_PATH = os.path.dirname(os.path.abspath(__file__))
+DB_DIR = os.path.join(ABS_PATH, "../../chroma_db")
 
-def add_documents(chunks: list[str]):
-    for chunk in chunks:
-        VECTOR_DB.append({
-            "text": chunk,
-            "embedding": embed_text(chunk)
-        })
+# Hàm 1: Lấy Database để tìm kiếm (Dùng cho Chat)
+def get_vector_store():
+    vector_store = Chroma(
+        persist_directory=DB_DIR,
+        embedding_function=embeddings
+    )
+    return vector_store
 
-def similarity_search(query: str, top_k: int = 3):
-    query_emb = embed_text(query)
-
-    scored = [
-        (abs(query_emb - item["embedding"]), item["text"])
-        for item in VECTOR_DB
-    ]
-
-    scored.sort(key=lambda x: x[0])
-    return [text for _, text in scored[:top_k]]
+# Hàm 2: Lưu tài liệu vào Database (Dùng cho Upload - Đây là hàm bị thiếu)
+def add_documents_to_db(docs):
+    vector_store = get_vector_store()
+    vector_store.add_documents(docs)
+    print(f"✅ Đã lưu {len(docs)} đoạn văn vào ChromaDB.")
