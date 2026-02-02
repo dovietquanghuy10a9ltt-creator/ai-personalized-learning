@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from db.database import get_db
 from agents.adaptive_agent import AdaptiveAgent
 
-# --- KHỞI TẠO ROUTER (Bị thiếu dòng này nên gây lỗi) ---
+# --- KHỞI TẠO ROUTER
 router = APIRouter()
 
 # --- MODEL DỮ LIỆU ---

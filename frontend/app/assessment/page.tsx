@@ -1,23 +1,30 @@
 // frontend/app/assessment/page.tsx
+"use client";
+
 import React from 'react';
-import AssessmentForm from '@/components/AssessmentForm'; // Import component đã sửa
+import AssessmentForm from '@/components/AssessmentForm'; 
+import { Toaster } from 'react-hot-toast';
 
 export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
+      {/* 1. Toaster: Để hiển thị thông báo "Hãy up file lên" từ AssessmentForm */}
+      <Toaster position="top-center" />
+
       <div className="container mx-auto px-4">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-blue-900 mb-2">
-            Hệ Thống Đánh Giá Năng Lực AI
+        {/* 2. Phần tiêu đề trang (Tối giản để không đè lên tiêu đề trong Form) */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-extrabold text-blue-900 mb-2">
+            AI Personalized Learning
           </h1>
-          <p className="text-gray-600">
-            Kiểm tra kiến thức dựa trên tài liệu bạn đã tải lên hệ thống
-          </p>
+          <div className="h-1 w-20 bg-blue-600 mx-auto rounded-full"></div>
         </div>
-        
-        {/* Đây là nơi hiển thị cái Form thông minh bạn vừa code */}
+
+        {/* 3. Component chứa toàn bộ logic làm bài */}
         <div className="flex justify-center">
-          <AssessmentForm />
+          <div className="w-full max-w-5xl">
+            <AssessmentForm />
+          </div>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto"> {/* Tăng độ rộng tối đa để chứa 4 cột đẹp hơn */}
+      <div className="max-w-7xl mx-auto">
         <header className="flex justify-between items-center mb-12">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">AI</div>
@@ -46,7 +46,7 @@ export default function Home() {
             <Link href="/evaluation" className="text-purple-600 font-bold hover:underline mt-auto">Xem báo cáo →</Link>
           </div>
 
-          {/* 4. Adaptive Agent - PHẦN MỚI THÊM VÀO */}
+          {/* 4. Adaptive Agent*/}
           <div className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition border border-orange-100 flex flex-col ring-2 ring-orange-50">
             <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center text-2xl mb-6">🧭</div>
             <h3 className="text-xl font-bold mb-3 text-gray-800">Adaptive Agent</h3>

@@ -1,8 +1,8 @@
 from langchain_groq import ChatGroq
 
-# Dùng Llama 3 trên Groq: Siêu nhanh, Free, Không lo 429
+# Dùng Llama 3 trên Groq
 llm = ChatGroq(
     temperature=0,
-    model_name="llama-3.3-70b-versatile", 
-    api_key="" # <--- Dán Key của bạn vào đây
+    model_name="llama-3.1-8b-instant", 
+    api_key="" 
 )

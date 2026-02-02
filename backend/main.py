@@ -2,9 +2,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# --- QUAN TRỌNG: CHỈ IMPORT NHỮNG FILE CÒN TỒN TẠI ---
-# Đã xóa 'chat' khỏi dòng này vì bạn không còn file api/chat.py nữa
-from api import assessment, upload, adaptive 
+# --- IMPORT DATABASE VÀ MODELS ---
+from db import models
+from db.database import engine
+# 👇 THÊM "stats" VÀO DÒNG IMPORT NÀY
+from api import assessment, upload, adaptive, stats 
+
+# LỆNH QUAN TRỌNG: Tự động tạo file app.db và các bảng nếu chưa có
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -24,10 +29,11 @@ app.include_router(assessment.router, prefix="/api/assessment", tags=["Assessmen
 # 2. Upload (Tải tài liệu)
 app.include_router(upload.router, prefix="/api", tags=["Upload"])
 
-# 3. Adaptive (Gia sư AI - Thay thế cho Chat cũ)
+# 3. Adaptive (Gia sư AI)
 app.include_router(adaptive.router, prefix="/api/adaptive", tags=["Adaptive Learning"])
 
-# (Đã xóa dòng app.include_router(chat.router...) gây lỗi)
+# 4. Stats (Thống kê học tập) - 👇 THÊM DÒNG NÀY ĐỂ KẾT NỐI DASHBOARD
+app.include_router(stats.router, prefix="/api/stats", tags=["Stats"])
 
 @app.get("/")
 def read_root():

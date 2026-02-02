@@ -14,7 +14,7 @@ import clsx from 'clsx';
 export default function Navbar() {
   const pathname = usePathname();
 
-  // Danh sách điều hướng đã cập nhật theo yêu cầu mới
+  // Danh sách điều hướng
   const navs = [
     { name: 'Trang chủ', href: '/', icon: Home },
     { name: 'Gia sư AI', href: '/adaptive', icon: GraduationCap },
@@ -27,7 +27,7 @@ export default function Navbar() {
     <nav className="border-b border-gray-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
-          {/* Logo giữ nguyên, nhấn vào sẽ về trang chủ */}
+          
           <Link href="/" className="flex items-center gap-2 group">
             <div className="bg-blue-600 p-2 rounded-lg group-hover:bg-blue-700 transition">
               <BrainCircuit className="h-6 w-6 text-white" />
@@ -35,7 +35,7 @@ export default function Navbar() {
             <span className="font-bold text-xl text-slate-800">AI Learning Agent</span>
           </Link>
           
-          {/* Menu điều hướng mới */}
+          {/* Menu điều hướng*/}
           <div className="hidden md:flex space-x-1">
             {navs.map((item) => {
               const isActive = pathname === item.href;
@@ -57,7 +57,7 @@ export default function Navbar() {
             })}
           </div>
           
-          {/* Profile HV giữ nguyên */}
+          
           <div className="flex items-center gap-3">
              <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
                HV

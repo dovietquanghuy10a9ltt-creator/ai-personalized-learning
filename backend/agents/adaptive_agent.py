@@ -25,7 +25,7 @@ class AdaptiveAgent:
         current_level = profile.current_level
         avg_score = profile.avg_score if profile.avg_score else 0
         
-        # Xử lý logic weak_points để AI không bị nhầm là học viên giỏi
+        # Xử lý logic weak_points
         weak_points = last_test.wrong_topics if (last_test and last_test.wrong_topics and last_test.wrong_topics != "Không có") else "Kiến thức tổng quát"
 
         docs = self.vector_store.similarity_search(
@@ -84,7 +84,7 @@ class AdaptiveAgent:
         last_test = self.db.query(AssessmentResult).filter_by(subject=subject).order_by(AssessmentResult.id.desc()).first()
         
         current_level = profile.current_level if profile else "Beginner"
-        # Ép giá trị wrong_topics để AI không dùng câu chào mẫu "chưa từng làm sai"
+        # Ép giá trị wrong_topics 
         wrong_topics = last_test.wrong_topics if (last_test and last_test.wrong_topics and last_test.wrong_topics != "Không có") else "Cần rà soát lại kiến thức cơ bản"
         
         prompt = PromptTemplate(
