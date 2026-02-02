@@ -1,28 +1,19 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { Toaster, toast } from 'react-hot-toast';
 
 const SUBJECTS = [
-  "Vật lý", 
-  "Đại số tuyến tính", 
-  "Giải tích", 
-  "Tin học đại cương", 
-  "Chuyên đề giới thiệu ngành CNTT",
-  "Ngôn ngữ lập trình C++", 
-  "Cấu trúc dữ liệu và giải thuật", 
-  "Hệ cơ sở dữ liệu", 
-  "Kiến trúc máy tính", 
-  "Xác suất thống kê", 
-  "Toán học tính toán", 
-  "Mạng máy tính", 
-  "PP lập trình hướng đối tượng", 
-  "Kỹ thuật truyền thông", 
-  "Cơ sở hệ điều hành"
+  "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
+  "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
+  "Cấu trúc dữ liệu và giải thuật", "Hệ cơ sở dữ liệu", "Kiến trúc máy tính", 
+  "Xác suất thống kê", "Toán học tính toán", "Mạng máy tính", 
+  "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
 ];
 
 export default function AdaptivePage() {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
-  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<any>(null); // Lưu kết quả phân tích
   const [loadingMap, setLoadingMap] = useState(false);
 
   // State cho Chat Tutor
@@ -39,20 +30,29 @@ export default function AdaptivePage() {
   // 1. Lấy Lộ Trình (Generate Roadmap)
   const getRecommendations = async () => {
     setLoadingMap(true);
-    setRecommendations([]); 
+    setAnalysisResult(null); 
     setMessages([]); // Reset chat khi đổi môn
+    
     try {
       const res = await axios.get(`http://localhost:8000/api/adaptive/recommend/${selectedSubject}`);
-      if (Array.isArray(res.data.path)) {
-        setRecommendations(res.data.path);
+      
+      // Backend trả về: { analysis: "...", roadmap: ["..."] }
+      if (res.data && res.data.roadmap) {
+        setAnalysisResult(res.data);
         
         // GIA SƯ CHÀO HỎI NGAY KHI CÓ LỘ TRÌNH
         setMessages([
-          { role: "assistant", content: `Chào bạn! Tôi là gia sư AI môn ${selectedSubject}. Dựa trên kết quả kiểm tra, tôi đã soạn lộ trình bên trái cho bạn. Chúng ta bắt đầu học **Bước 1** ngay nhé?` }
+          { 
+            role: "assistant", 
+            content: `Chào bạn! Tôi là gia sư AI môn ${selectedSubject}.\n\nDựa trên bài kiểm tra gần nhất:\n"${res.data.analysis}"\n\nTôi đã soạn lộ trình bên trái. Bạn muốn bắt đầu từ đâu?` 
+          }
         ]);
+        toast.success("Đã tạo lộ trình học tập cá nhân hóa!");
+      } else {
+         toast.error("Dữ liệu trả về không đúng định dạng.");
       }
     } catch (error) {
-      alert("Chưa có dữ liệu kiểm tra để tạo lộ trình!");
+      toast.error("Chưa có dữ liệu bài kiểm tra để phân tích. Hãy làm bài kiểm tra trước!");
     } finally {
       setLoadingMap(false);
     }
@@ -68,13 +68,15 @@ export default function AdaptivePage() {
     setLoadingChat(true);
 
     try {
-      // Gửi kèm Lộ trình (JSON string) để Gia sư biết đang dạy cái gì
-      const roadmapString = JSON.stringify(recommendations);
-      
+      // Gửi kèm Lộ trình (JSON string) để Gia sư biết ngữ cảnh
+      const contextString = analysisResult 
+        ? `Phân tích: ${analysisResult.analysis}. Lộ trình: ${JSON.stringify(analysisResult.roadmap)}`
+        : "Chưa có lộ trình.";
+
       const res = await axios.post("http://localhost:8000/api/adaptive/chat", {
         subject: selectedSubject,
         message: userMsg,
-        roadmap_context: roadmapString
+        roadmap_context: contextString
       });
 
       setMessages(prev => [...prev, { role: "assistant", content: res.data.reply }]);
@@ -86,101 +88,129 @@ export default function AdaptivePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6 font-sans">
+      <Toaster />
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 h-[85vh]">
         
         {/* CỘT TRÁI: CẤU HÌNH & LỘ TRÌNH (Chiếm 7 phần) */}
-        <div className="lg:col-span-7 flex flex-col gap-6 overflow-y-auto pr-2">
+        <div className="lg:col-span-7 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
           
           {/* Header & Chọn môn */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center text-2xl">🧭</div>
-              <h1 className="text-2xl font-bold text-gray-800">Lộ Trình Học Tập</h1>
+              <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl shadow-sm">🧭</div>
+              <div>
+                 <h1 className="text-2xl font-black text-gray-800 tracking-tight">Lộ Trình Học Tập</h1>
+                 <p className="text-sm text-gray-400 font-medium">AI phân tích lỗi sai & đề xuất giải pháp</p>
+              </div>
             </div>
             
-            <div className="flex gap-3">
+            <div className="flex flex-col md:flex-row gap-3">
               <select 
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="flex-1 p-3 border rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-orange-400"
+                className="flex-1 p-4 border border-gray-200 rounded-xl bg-gray-50 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               >
                 {SUBJECTS.map(sub => <option key={sub} value={sub}>{sub}</option>)}
               </select>
               <button 
                 onClick={getRecommendations}
                 disabled={loadingMap}
-                className="px-6 py-3 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 transition shadow-md disabled:bg-gray-300 whitespace-nowrap"
+                className="px-8 py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 disabled:opacity-70 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                {loadingMap ? "Đang tạo..." : "Tạo Lộ Trình"}
+                {loadingMap ? "Đang phân tích..." : "Tạo Lộ Trình"}
               </button>
             </div>
           </div>
 
-          {/* Danh sách Lộ trình */}
-          {recommendations.length > 0 ? (
-            <div className="space-y-4">
-              {recommendations.map((item, idx) => (
-                <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm border-l-8 border-orange-500 relative overflow-hidden group hover:shadow-md transition">
-                  <div className="absolute top-0 right-0 bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1 rounded-bl-xl">
-                    {item.step}
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2 mt-1">{item.topic}</h3>
-                  <p className="text-gray-600 text-sm mb-3"><span className="font-semibold">Nhiệm vụ:</span> {item.action}</p>
-                  <p className="text-xs text-gray-400 italic bg-gray-50 p-2 rounded">💡 {item.reason}</p>
-                  
-                  {/* Nút học ngay -> Gửi tin nhắn tự động vào Chat */}
-                  <button 
-                    onClick={() => {
-                        setInput(`Tôi muốn bắt đầu học ${item.step}: ${item.topic}. Hãy hướng dẫn tôi!`);
-                    }}
-                    className="mt-3 text-orange-600 text-sm font-bold hover:underline"
-                  >
-                    👉 Bắt đầu học phần này
-                  </button>
-                </div>
-              ))}
+          {/* Hiển thị Phân tích & Lộ trình */}
+          {analysisResult ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+               {/* Box Phân tích */}
+               <div className="bg-red-50 p-6 rounded-3xl border border-red-100">
+                  <h3 className="text-sm font-black text-red-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                     🩺 Chẩn đoán điểm yếu
+                  </h3>
+                  <p className="text-gray-800 font-medium leading-relaxed">
+                     {analysisResult.analysis}
+                  </p>
+               </div>
+
+               {/* Danh sách các bước Roadmap */}
+               <div className="space-y-4">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest ml-2">Kế hoạch khắc phục</h3>
+                  {analysisResult.roadmap.map((step: string, idx: number) => (
+                    <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex gap-4 items-start group hover:border-indigo-300 transition-all">
+                       <span className="flex-shrink-0 w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">
+                          {idx + 1}
+                       </span>
+                       <div className="flex-1">
+                          <p className="text-gray-800 font-bold mt-1">{step}</p>
+                          <button 
+                             onClick={() => setInput(`Hãy hướng dẫn tôi chi tiết về bước ${idx + 1}: "${step}"`)}
+                             className="text-xs font-bold text-indigo-500 mt-2 hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                             👉 Học ngay cùng Gia sư
+                          </button>
+                       </div>
+                    </div>
+                  ))}
+               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-white rounded-2xl border-dashed border-2 border-gray-300 text-gray-400 p-10 text-center">
-              Chưa có lộ trình. Hãy chọn môn và bấm "Tạo Lộ Trình" để AI phân tích.
+            <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border-2 border-dashed border-gray-200 text-gray-400 p-10 text-center min-h-[300px]">
+              <div className="text-6xl mb-4 opacity-50">🤖</div>
+              <p className="font-bold">Chưa có dữ liệu phân tích.</p>
+              <p className="text-sm mt-2">Chọn môn và bấm nút để AI tìm ra lỗ hổng kiến thức của bạn.</p>
             </div>
           )}
         </div>
 
         {/* CỘT PHẢI: GIA SƯ AI CHAT (Chiếm 5 phần) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full overflow-hidden">
+        <div className="lg:col-span-5 bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 flex flex-col h-full overflow-hidden">
           {/* Chat Header */}
-          <div className="p-4 bg-gray-900 text-white flex items-center gap-3">
-            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center animate-pulse text-xs">🤖</div>
+          <div className="p-5 bg-white border-b border-gray-100 flex items-center gap-4">
+            <div className="relative">
+               <div className="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-lg shadow-lg">
+                  🎓
+               </div>
+               <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+            </div>
             <div>
-              <h3 className="font-bold text-sm">Gia sư AI</h3>
-              <p className="text-xs text-gray-400">Luôn sẵn sàng hỗ trợ bạn</p>
+              <h3 className="font-bold text-gray-800">Gia sư AI</h3>
+              <p className="text-xs text-gray-400 font-medium">Đang trực tuyến • Hỗ trợ 24/7</p>
             </div>
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50/50 scroll-smooth">
             {messages.length === 0 && (
-              <div className="text-center text-gray-400 text-sm mt-10">
-                Hãy tạo lộ trình để kích hoạt Gia sư AI...
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
+                <p>👋 Xin chào! Tôi có thể giúp gì cho bạn?</p>
               </div>
             )}
+            
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
                   msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-tr-none' 
-                    : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none shadow-sm'
+                    ? 'bg-indigo-600 text-white rounded-br-none' 
+                    : 'bg-white text-gray-700 border border-gray-200 rounded-bl-none'
                 }`}>
-                  {msg.content}
+                  {/* Hỗ trợ xuống dòng cho tin nhắn của AI */}
+                  {msg.content.split('\n').map((line, i) => (
+                     <p key={i} className={`min-h-[1rem] ${i > 0 ? 'mt-1' : ''}`}>{line}</p>
+                  ))}
                 </div>
               </div>
             ))}
+            
             {loadingChat && (
               <div className="flex justify-start">
-                <div className="bg-gray-200 p-3 rounded-2xl rounded-tl-none text-xs text-gray-500 animate-pulse">
-                  Gia sư đang soạn bài...
+                <div className="bg-white border border-gray-200 p-4 rounded-2xl rounded-bl-none text-xs text-gray-500 flex gap-2 items-center">
+                   <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></span>
+                   <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-75"></span>
+                   <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce delay-150"></span>
                 </div>
               </div>
             )}
@@ -188,20 +218,20 @@ export default function AdaptivePage() {
           </div>
 
           {/* Chat Input */}
-          <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
+          <div className="p-4 bg-white border-t border-gray-100 flex gap-3">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder={recommendations.length > 0 ? "Hỏi gia sư về lộ trình..." : "Vui lòng tạo lộ trình trước..."}
-              disabled={recommendations.length === 0}
-              className="flex-1 p-3 bg-gray-100 rounded-xl text-sm outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              placeholder={analysisResult ? "Hỏi thêm về lộ trình..." : "Tạo lộ trình trước khi chat..."}
+              disabled={!analysisResult}
+              className="flex-1 p-4 bg-gray-100 rounded-2xl text-sm font-medium outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button 
               onClick={handleSendMessage}
-              disabled={loadingChat || recommendations.length === 0}
-              className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 disabled:bg-gray-300 transition"
+              disabled={loadingChat || !analysisResult}
+              className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition shadow-lg shadow-indigo-200"
             >
               ➤
             </button>

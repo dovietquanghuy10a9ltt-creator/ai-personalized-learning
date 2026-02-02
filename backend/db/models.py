@@ -5,7 +5,7 @@ from sqlalchemy.sql import func
 from db.database import Base
 from datetime import datetime
 
-# 1. Bảng Hồ sơ tổng quan (Lưu trình độ hiện tại của người dùng theo môn học)
+# 1. Bảng Hồ sơ tổng quan
 class LearnerProfile(Base):
     __tablename__ = "learner_profiles"
     id = Column(Integer, primary_key=True, index=True)
@@ -14,42 +14,45 @@ class LearnerProfile(Base):
     total_tests = Column(Integer, default=0)
     avg_score = Column(Float, default=0.0)
 
-# 2. Bảng Lịch sử làm bài (Đã thêm các cột bị thiếu)
+# 2. Bảng Lịch sử làm bài (Đã thêm wrong_detail)
 class AssessmentHistory(Base):
     __tablename__ = "assessment_history"
     id = Column(Integer, primary_key=True, index=True)
     subject = Column(String, index=True)
     score = Column(Float) # Điểm số (0-100)
     
-    # 👇 ĐÃ BỔ SUNG 2 CỘT QUAN TRỌNG NÀY:
+    # Các thông tin thống kê
     total_questions = Column(Integer, default=0)
     correct_count = Column(Integer, default=0)
     
-    level_at_time = Column(String) # Level tại thời điểm thi
+    # 👇 QUAN TRỌNG: Cột này lưu danh sách câu sai để Gia sư AI phân tích
+    wrong_detail = Column(Text, nullable=True) 
+    
+    level_at_time = Column(String) 
     timestamp = Column(DateTime, default=datetime.utcnow) 
-    duration_seconds = Column(Integer) # Thời gian làm bài
+    duration_seconds = Column(Integer)
 
 # 3. Kho câu hỏi
 class QuestionBank(Base):
     __tablename__ = "question_bank"
     id = Column(Integer, primary_key=True, index=True)
     subject = Column(String, index=True)
-    difficulty = Column(String) # Beginner, Intermediate, Advanced
+    difficulty = Column(String) 
     content = Column(String)
-    options = Column(JSON) # Lưu danh sách 4 lựa chọn [A, B, C, D]
+    options = Column(JSON) 
     correct_answer = Column(String)
     explanation = Column(Text, nullable=True) 
     is_used = Column(Boolean, default=False)
-    
-    # Thêm bảng Chunk để lưu kiến thức RAG (nếu chưa có)
+
+# Bảng Chunk để lưu kiến thức RAG
 class Chunk(Base):
     __tablename__ = "chunks"
     id = Column(Integer, primary_key=True, index=True)
     content = Column(Text)
-    subject = Column(String, index=True) # Lưu tên môn học (VD: Mạng máy tính)
+    subject = Column(String, index=True)
     source_file = Column(String)
 
-# 4. Kết quả đánh giá chi tiết
+# 4. Kết quả đánh giá chi tiết (Có thể ít dùng nhưng cứ giữ lại nếu cần logic cũ)
 class AssessmentResult(Base):
     __tablename__ = "assessment_results"
     id = Column(Integer, primary_key=True, index=True)

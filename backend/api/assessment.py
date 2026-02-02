@@ -1,4 +1,3 @@
-# backend/api/assessment.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from db.database import get_db, engine, Base
@@ -7,7 +6,8 @@ from agents.assessment_agent import AssessmentAgent
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Dict
-import re # Dùng để xử lý chuỗi chính xác hơn
+import re 
+import json # Import JSON để lưu log câu sai
 
 router = APIRouter()
 
@@ -32,42 +32,33 @@ def calculate_level(correct: int, total: int) -> str:
     elif score_percent >= 50: return "Intermediate"
     else: return "Beginner"
 
-# --- HELPER MỚI: Tự động tìm nhãn đáp án đúng (A, B, C, D) ---
+# --- HELPER: Tự động tìm nhãn đáp án đúng (A, B, C, D) ---
 def find_correct_label(options: list, correct_ans: str) -> str:
-    """
-    Hàm này so sánh nội dung text để tìm ra đáp án đúng nằm ở vị trí nào.
-    Trả về: 'A', 'B', 'C' hoặc 'D'.
-    """
     LABELS = ['A', 'B', 'C', 'D']
     
-    # Chuẩn hóa chuỗi (xóa khoảng trắng thừa, viết thường)
     def clean_text(text):
-        # Xóa prefix kiểu "A. ", "1. " nếu có
         text = re.sub(r'^[A-D0-9][\.\)]\s*', '', str(text), flags=re.IGNORECASE)
         return text.strip().lower()
 
     clean_correct = clean_text(correct_ans)
     
-    # 1. Nếu correct_ans chỉ là "A", "B"... thì trả về luôn
+    # 1. Nếu correct_ans ngắn gọn là "A", "B"...
     if correct_ans.strip().upper() in LABELS and len(correct_ans.strip()) <= 3:
         return correct_ans.strip().upper()
 
-    # 2. So sánh nội dung với từng option
+    # 2. So sánh nội dung
     for idx, opt in enumerate(options):
-        if idx >= 4: break # Chỉ xét 4 đáp án đầu
+        if idx >= 4: break 
         clean_opt = clean_text(opt)
-        
-        # So khớp chính xác hoặc chứa nhau
         if clean_opt == clean_correct or (clean_correct and clean_correct in clean_opt):
             return LABELS[idx]
             
-    # 3. Fallback: Nếu không tìm thấy, trả về ký tự đầu của đáp án gốc (cách cũ)
-    # Nhưng chỉ lấy nếu nó là A, B, C, D
+    # 3. Fallback
     first_char = correct_ans.strip().upper()[0]
     if first_char in LABELS:
         return first_char
         
-    return "" # Không xác định được
+    return "" 
 
 # --- API 1: SINH ĐỀ THI ---
 @router.post("/generate")
@@ -86,7 +77,7 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
         
     return {"questions": questions, "subject": req.subject}
 
-# --- API 2: NỘP BÀI & CHẤM ĐIỂM (ĐÃ SỬA LOGIC) ---
+# --- API 2: NỘP BÀI & CHẤM ĐIỂM (CẬP NHẬT LƯU CÂU SAI) ---
 @router.post("/submit")
 def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     # 1. Map đáp án của user
@@ -101,36 +92,42 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     correct_count = 0
     total_questions = len(questions_db)
     detailed_results = []
+    
+    # Danh sách lưu các câu sai để Gia sư AI phân tích
+    wrong_questions_log = [] 
 
     # 2. Chấm điểm từng câu
     for q in questions_db:
-        user_choice = user_map.get(q.id, "") # User chọn "A", "B"...
-        
-        # Dùng hàm thông minh để tìm đáp án đúng thực sự là A, B, C hay D
+        user_choice = user_map.get(q.id, "") 
         real_correct_label = find_correct_label(q.options, q.correct_answer)
-        
-        # So sánh
         is_correct = (user_choice == real_correct_label)
         
         if is_correct:
             correct_count += 1
+        else:
+            # Nếu sai, ghi lại nội dung để AI học
+            wrong_questions_log.append({
+                "question": q.content,
+                "student_choice": user_choice,
+                "correct_answer": q.correct_answer, # Lưu đáp án gốc để AI hiểu ngữ cảnh
+                "correct_label": real_correct_label
+            })
             
-        # Đánh dấu đã dùng
-        q.is_used = True
+        q.is_used = True # Đánh dấu đã dùng
         
         detailed_results.append({
             "question_id": q.id,
             "user_choice": user_choice,
-            "correct_label": real_correct_label, # Gửi cái này về để Frontend tô màu xanh
+            "correct_label": real_correct_label,
             "explanation": q.explanation,
             "is_correct": is_correct
         })
 
-    # 3. Tính toán
+    # 3. Tính toán điểm số
     score_percent = (correct_count / total_questions * 100) if total_questions > 0 else 0
     new_level = calculate_level(correct_count, total_questions)
     
-    # 4. Lưu Lịch sử
+    # 4. Lưu Lịch sử kèm wrong_detail
     history = AssessmentHistory(
         subject=req.subject,
         score=score_percent,
@@ -138,6 +135,10 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
         total_questions=total_questions,
+        
+        # Lưu log câu sai dưới dạng JSON string
+        wrong_detail=json.dumps(wrong_questions_log, ensure_ascii=False),
+        
         timestamp=datetime.utcnow()
     )
     db.add(history)
