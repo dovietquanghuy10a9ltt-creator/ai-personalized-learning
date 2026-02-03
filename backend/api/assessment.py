@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from db.database import get_db, engine, Base
 from db.models import LearnerProfile, QuestionBank, AssessmentHistory
-from agents.assessment_agent import AssessmentAgent
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List, Dict
-import re 
-import json # Import JSON để lưu log câu sai
+from typing import List
+import json
+
+# Import các Agent chuyên biệt
+from agents.assessment_agent import AssessmentAgent
+from agents.evaluation_agent import EvaluationAgent
+from agents.profiling_agent import ProfilingAgent
 
 router = APIRouter()
 
@@ -24,42 +27,6 @@ class SubmitRequest(BaseModel):
     answers: List[AnswerSubmission]
     duration_seconds: int = 300 
 
-# --- HELPER: Hàm xác định trình độ ---
-def calculate_level(correct: int, total: int) -> str:
-    if total == 0: return "Beginner"
-    score_percent = (correct / total) * 100
-    if score_percent >= 80: return "Advanced"
-    elif score_percent >= 50: return "Intermediate"
-    else: return "Beginner"
-
-# --- HELPER: Tự động tìm nhãn đáp án đúng (A, B, C, D) ---
-def find_correct_label(options: list, correct_ans: str) -> str:
-    LABELS = ['A', 'B', 'C', 'D']
-    
-    def clean_text(text):
-        text = re.sub(r'^[A-D0-9][\.\)]\s*', '', str(text), flags=re.IGNORECASE)
-        return text.strip().lower()
-
-    clean_correct = clean_text(correct_ans)
-    
-    # 1. Nếu correct_ans ngắn gọn là "A", "B"...
-    if correct_ans.strip().upper() in LABELS and len(correct_ans.strip()) <= 3:
-        return correct_ans.strip().upper()
-
-    # 2. So sánh nội dung
-    for idx, opt in enumerate(options):
-        if idx >= 4: break 
-        clean_opt = clean_text(opt)
-        if clean_opt == clean_correct or (clean_correct and clean_correct in clean_opt):
-            return LABELS[idx]
-            
-    # 3. Fallback
-    first_char = correct_ans.strip().upper()[0]
-    if first_char in LABELS:
-        return first_char
-        
-    return "" 
-
 # --- API 1: SINH ĐỀ THI ---
 @router.post("/generate")
 def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
@@ -72,88 +39,87 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
     if not questions:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Chưa có dữ liệu môn '{req.subject}'. Vui lòng upload tài liệu để học!"
+            detail=f"Chưa có tài liệu môn '{req.subject}'. Vui lòng upload tài liệu trước!"
         )
         
     return {"questions": questions, "subject": req.subject}
 
-# --- API 2: NỘP BÀI & CHẤM ĐIỂM (CẬP NHẬT LƯU CÂU SAI) ---
+# --- API 2: NỘP BÀI & CHẤM ĐIỂM ---
 @router.post("/submit")
 def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
-    # 1. Map đáp án của user
     user_map = {a.question_id: a.selected_option for a in req.answers}
     question_ids = list(user_map.keys())
     
     if not question_ids:
-        raise HTTPException(status_code=400, detail="Không có câu trả lời nào được gửi lên.")
+        raise HTTPException(status_code=400, detail="Không có câu trả lời nào.")
 
     questions_db = db.query(QuestionBank).filter(QuestionBank.id.in_(question_ids)).all()
     
-    correct_count = 0
-    total_questions = len(questions_db)
-    detailed_results = []
-    
-    # Danh sách lưu các câu sai để Gia sư AI phân tích
-    wrong_questions_log = [] 
+    profile = db.query(LearnerProfile).filter_by(subject=req.subject).first()
+    prev_avg = profile.avg_score if profile else 50.0
 
-    # 2. Chấm điểm từng câu
+    eval_agent = EvaluationAgent()
+    
+    correct_count = 0
+    wrong_questions_log = []
+    detailed_results = []
+
     for q in questions_db:
-        user_choice = user_map.get(q.id, "") 
-        real_correct_label = find_correct_label(q.options, q.correct_answer)
-        is_correct = (user_choice == real_correct_label)
+        user_choice = user_map.get(q.id, "")
+        
+        # Chuẩn hóa nhãn để so sánh (A, B, C, D)
+        db_correct_label = q.correct_answer[0].upper() if q.correct_answer else ""
+        user_label = user_choice[0].upper() if user_choice else ""
+        
+        is_correct = (user_label == db_correct_label)
         
         if is_correct:
             correct_count += 1
         else:
-            # Nếu sai, ghi lại nội dung để AI học
             wrong_questions_log.append({
                 "question": q.content,
                 "student_choice": user_choice,
-                "correct_answer": q.correct_answer, # Lưu đáp án gốc để AI hiểu ngữ cảnh
-                "correct_label": real_correct_label
+                "correct_answer": q.correct_answer
             })
-            
-        q.is_used = True # Đánh dấu đã dùng
         
+        # Gửi correct_label về frontend để hiển thị màu xanh
         detailed_results.append({
             "question_id": q.id,
-            "user_choice": user_choice,
-            "correct_label": real_correct_label,
+            "is_correct": is_correct,
             "explanation": q.explanation,
-            "is_correct": is_correct
+            "correct_label": db_correct_label 
         })
 
-    # 3. Tính toán điểm số
-    score_percent = (correct_count / total_questions * 100) if total_questions > 0 else 0
-    new_level = calculate_level(correct_count, total_questions)
-    
-    # 4. Lưu Lịch sử kèm wrong_detail
+    score_percent = (correct_count / len(questions_db) * 100) if questions_db else 0
+
+    evaluation_data = eval_agent.evaluate_performance(
+        test_score_percent=score_percent,
+        time_spent_seconds=req.duration_seconds,
+        previous_avg_score=prev_avg
+    )
+
+    prof_agent = ProfilingAgent(db)
+    new_level = prof_agent.classify_learner(correct_count, len(questions_db), req.subject)
+
+    # Lưu lịch sử
     history = AssessmentHistory(
         subject=req.subject,
         score=score_percent,
         level_at_time=new_level,
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
-        total_questions=total_questions,
-        
-        # Lưu log câu sai dưới dạng JSON string
+        total_questions=len(questions_db),
         wrong_detail=json.dumps(wrong_questions_log, ensure_ascii=False),
-        
         timestamp=datetime.utcnow()
     )
     db.add(history)
 
-    # 5. Cập nhật Profile
-    profile = db.query(LearnerProfile).filter_by(subject=req.subject).first()
     if not profile:
         profile = LearnerProfile(subject=req.subject, total_tests=0, avg_score=0.0)
         db.add(profile)
     
-    current_total = profile.total_tests or 0
-    current_avg = profile.avg_score or 0.0
-    
-    profile.total_tests = current_total + 1
-    profile.avg_score = ((current_avg * current_total) + score_percent) / (current_total + 1)
+    profile.total_tests += 1
+    profile.avg_score = ((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests
     profile.current_level = new_level 
     
     db.commit()
@@ -162,57 +128,51 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         "level": new_level, 
         "score": score_percent, 
         "correct_count": correct_count,
-        "total_questions": total_questions,
+        "total_questions": len(questions_db),
+        "evaluation": evaluation_data, 
         "results": detailed_results,
         "message": "Đã chấm điểm thành công!"
     }
 
-# --- API 3: LẤY LỊCH SỬ ---
+# --- API 3: LẤY LỊCH SỬ (ĐÃ SỬA LOGIC TÍNH TREND & DURATION) ---
 @router.get("/history/{subject}")
 def get_evaluation_history(subject: str, db: Session = Depends(get_db)):
+    # 1. Lấy toàn bộ lịch sử CŨ -> MỚI để tính đà tiến bộ
     history_records = db.query(AssessmentHistory)\
         .filter_by(subject=subject)\
         .order_by(AssessmentHistory.timestamp.asc())\
         .all()
-        
-    profile = db.query(LearnerProfile).filter_by(subject=subject).first()
     
     if not history_records:
-        return {
-            "history": [], 
-            "summary": {
-                "total_attempts": 0, "average_score": 0, 
-                "effort_level": "Chưa bắt đầu", "latest_level": "Beginner"
-            }
-        }
+        return {"history": [], "summary": {"total_attempts": 0}}
 
-    total = len(history_records)
-    effort_msg = "Mới bắt đầu 🌱"
-    if total >= 5: effort_msg = "Rất chăm chỉ 🔥"
-    elif total >= 2: 
-        if history_records[-1].score > history_records[-2].score: effort_msg = "Đang tiến bộ 🚀"
-        elif history_records[-1].score < history_records[-2].score: effort_msg = "Cần cố gắng hơn 💪"
-        else: effort_msg = "Phong độ ổn định ⚓"
+    processed_history = []
+    previous_score = 0 # Điểm bài trước để so sánh
 
-    history_list = [
-        {
-            "id": h.id, "date": h.timestamp.isoformat(),
-            "score": h.score, "duration": h.duration_seconds,
-            "level": h.level_at_time, "correct": h.correct_count, "total": h.total_questions
-        } for h in history_records
-    ]
+    for h in history_records:
+        # Tính Trend: Điểm hiện tại - Điểm bài trước
+        trend = h.score - previous_score
+        previous_score = h.score # Cập nhật lại điểm tham chiếu cho vòng sau
 
-    avg_score = round(profile.avg_score, 1) if profile else 0.0
+        # Tính lại Effort giả định (nếu cần hiển thị thanh nỗ lực)
+        duration = h.duration_seconds if h.duration_seconds else 0
+        effort_percent = min(100, int((duration / 300) * 100))
 
-    return {
-        "history": history_list,
-        "summary": {
-            "total_attempts": total, "average_score": avg_score,
-            "effort_level": effort_msg, "latest_level": profile.current_level if profile else "Beginner"
-        }
-    }
+        processed_history.append({
+            "id": h.id,
+            "date": h.timestamp.isoformat(),
+            "score": h.score,
+            "level": h.level_at_time,
+            "duration": duration,       # Gửi giây thực tế về Frontend
+            "trend": trend,             # Gửi chỉ số tăng/giảm điểm
+            "effort": effort_percent
+        })
 
-# --- API 4: RESET DỮ LIỆU ---
+    # Đảo ngược danh sách để bài MỚI NHẤT lên đầu bảng
+    processed_history.reverse()
+
+    return {"history": processed_history}
+
 @router.delete("/debug/reset-all")
 def reset_database():
     try:

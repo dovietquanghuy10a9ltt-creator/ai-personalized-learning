@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 
-// --- DANH SÁCH MÔN HỌC ---
+// --- CONFIG ---
 const SUBJECTS = [
   { id: 1, name: "Vật lý", icon: "⚛️" },
   { id: 2, name: "Đại số tuyến tính", icon: "📐" },
@@ -25,7 +25,6 @@ const SUBJECTS = [
 const LABELS = ['A', 'B', 'C', 'D'];
 
 const AssessmentForm = () => {
-  // --- STATE ---
   const [step, setStep] = useState<'select_subject' | 'quiz' | 'result'>('select_subject');
   const [subject, setSubject] = useState("");
   const [questions, setQuestions] = useState<any[]>([]);
@@ -33,12 +32,10 @@ const AssessmentForm = () => {
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(0);
   
-  // State Kết quả & Review
   const [resultData, setResultData] = useState<any>(null);
   const [reviewMode, setReviewMode] = useState(false); 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Đồng hồ
   useEffect(() => {
     let interval: any;
     if (step === 'quiz' && !loading) {
@@ -47,22 +44,18 @@ const AssessmentForm = () => {
     return () => clearInterval(interval);
   }, [step, loading]);
 
-  // --- HÀM XỬ LÝ (HELPER) ---
+  const cleanOptionText = (text: string) => text.replace(/^[A-D]\.\s*/, "").trim();
   
-  // 1. Làm sạch text đáp án an toàn
-  // Chỉ xóa "A.", "B." nếu nó nằm ở đầu dòng. Không dùng substring cắt bừa bãi.
-  const cleanOptionText = (text: string) => {
-    return text.replace(/^[A-D]\.\s*/, "").trim();
+  const normalizeLabel = (label: string) => {
+      if (!label) return "";
+      return label.trim().charAt(0).toUpperCase();
   };
 
-  // 2. Format thời gian (MM:SS)
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
-
-  // --- API CALLS ---
 
   const handleSelectSubject = async (selectedSub: string) => {
     setSubject(selectedSub);
@@ -78,24 +71,18 @@ const AssessmentForm = () => {
       if (res.data.questions && res.data.questions.length > 0) {
         setQuestions(res.data.questions);
         setStep('quiz');
-        toast.success(`Đã tạo đề thi môn ${selectedSub}`, { duration: 3000 });
-      } else {
-        toast.error("Không tìm thấy dữ liệu đề thi.", { duration: 3000 });
+        toast.dismiss();
+        toast.success(`Đã tạo đề thi môn ${selectedSub}`, { duration: 2000 });
       }
     } catch (error) {
-      toast.error("Chưa có tài liệu môn này. Vui lòng upload trước!", { duration: 3000 });
+      toast.error("Chưa có tài liệu môn này.", { duration: 3000 });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSubmit = async () => {
-    // Kiểm tra làm đủ chưa
-    if (Object.keys(answers).length < questions.length) {
-       if(!confirm("Bạn chưa làm hết câu hỏi. Chắc chắn nộp bài?")) return;
-    }
     setLoading(true);
-
     const submissionData = {
       subject: subject,
       answers: Object.entries(answers).map(([qid, opt]) => ({
@@ -109,238 +96,237 @@ const AssessmentForm = () => {
       const res = await axios.post("http://localhost:8000/api/assessment/submit", submissionData);
       setResultData(res.data);
       setStep('result');
+      toast.dismiss();
       toast.success("Nộp bài thành công!", { duration: 3000 });
     } catch (error) {
-      toast.error("Lỗi khi nộp bài.", { duration: 3000 });
+      toast.error("Lỗi khi nộp bài.");
     } finally {
       setLoading(false);
     }
   };
 
-  // ==========================================
-  // VIEW 1: CHỌN MÔN HỌC
-  // ==========================================
-  if (step === 'select_subject') {
-    return (
-      <div className="max-w-6xl mx-auto p-4 text-center pb-20">
-        <Toaster />
-        <h2 className="text-xl font-black text-gray-800 mb-6 uppercase tracking-tighter">
-          Chọn môn học kiểm tra năng lực
-        </h2>
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-blue-600 font-bold animate-pulse text-sm">AI đang soạn đề thi...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {SUBJECTS.map((sub) => (
-              <button 
-                key={sub.id} 
-                onClick={() => handleSelectSubject(sub.name)}
-                className="group flex flex-col items-center p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-lg hover:border-blue-200 hover:-translate-y-1 transition-all duration-300"
-              >
-                <span className="text-3xl mb-2 group-hover:scale-110 transition-transform">{sub.icon}</span>
-                <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tight group-hover:text-blue-600">
-                  {sub.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ==========================================
-  // VIEW 2: KẾT QUẢ TỔNG KẾT
-  // ==========================================
-  if (step === 'result' && resultData) {
-    // Nếu chưa vào chế độ Review thì hiện bảng điểm
-    if (!reviewMode) {
-      return (
-        <div className="max-w-md mx-auto mt-6 bg-white p-6 rounded-3xl shadow-xl border border-gray-100 text-center animate-in zoom-in-95 duration-300">
-          <Toaster />
-          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-3">🏆</div>
-          <h2 className="text-lg font-bold text-gray-800">{subject}</h2>
-          
-          <div className="text-5xl font-black text-blue-600 my-4">{Math.round(resultData.score)}%</div>
-          <div className="inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase mb-6">
-            Trình độ: {resultData.level}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mb-6">
-             <div className="bg-gray-50 p-3 rounded-xl">
-                <p className="text-[10px] text-gray-400 font-bold uppercase">Câu đúng</p>
-                <p className="text-lg font-black text-green-600">{resultData.correct_count}/{resultData.total_questions}</p>
-             </div>
-             <div className="bg-gray-50 p-3 rounded-xl">
-                <p className="text-[10px] text-gray-400 font-bold uppercase">Thời gian</p>
-                <p className="text-lg font-black text-gray-700">{formatTime(timer)}</p>
-             </div>
-          </div>
-
-          <div className="space-y-2">
-            <button onClick={() => { setReviewMode(true); setCurrentIndex(0); }} className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-black transition shadow-lg">
-              🔍 Xem lời giải chi tiết
-            </button>
-            <button onClick={() => setStep('select_subject')} className="w-full py-3 bg-white text-gray-700 border border-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 transition">
-              Làm đề khác
-            </button>
-          </div>
-        </div>
-      );
-    }
-  }
-
-  // ==========================================
-  // VIEW 3: QUIZ & REVIEW (GIAO DIỆN CHÍNH)
-  // ==========================================
+  // --- LOGIC XỬ LÝ CHO VIEW QUIZ & REVIEW ---
   const currentQ = questions[currentIndex];
-  
-  // Logic hiển thị Review
   let reviewStatus = null;
   let explanation = null;
-  let correctLabel = null; // A, B, C, D
+  let correctLabelRaw = "";
 
-  if (reviewMode && resultData) {
-     const resultItem = resultData.results.find((r: any) => r.question_id === currentQ.id);
-     if (resultItem) {
-        reviewStatus = resultItem.is_correct ? 'correct' : 'wrong';
-        explanation = resultItem.explanation;
-        // QUAN TRỌNG: Sử dụng correct_label từ Backend trả về để tô màu chính xác
-        correctLabel = resultItem.correct_label; 
-     }
+  if ((step === 'quiz' || reviewMode) && resultData && reviewMode) {
+      if (currentQ) {
+        const resultItem = resultData.results.find((r: any) => r.question_id === currentQ.id);
+        if (resultItem) {
+          reviewStatus = resultItem.is_correct ? 'correct' : 'wrong';
+          explanation = resultItem.explanation;
+          correctLabelRaw = resultItem.correct_label;
+        }
+      }
   }
+  const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
 
-  const progress = ((currentIndex + 1) / questions.length) * 100;
-
+  // --- RETURN TRỰC TIẾP (KHÔNG DÙNG HÀM RENDER RIÊNG) ---
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden relative flex flex-col" style={{ minHeight: '60vh' }}>
-       <Toaster />
-       
-       {/* HEADER: Sticky top */}
-       <div className="px-6 py-3 border-b border-gray-50 flex justify-between items-center bg-white sticky top-0 z-10">
-          <div>
-             <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">
-                {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : subject}
-             </span>
-             <span className="text-xs font-bold text-gray-400">
-                Câu {currentIndex + 1}/{questions.length}
-             </span>
-          </div>
-          {!reviewMode && (
-             <div className="bg-gray-100 px-3 py-1 rounded-lg text-xs font-mono font-bold text-gray-600">
-                ⏱️ {formatTime(timer)}
-             </div>
-          )}
-          {reviewMode && (
-             <button onClick={() => setStep('select_subject')} className="text-xs font-bold text-red-500 hover:underline">
-                Thoát
-             </button>
-          )}
-       </div>
+    <div className="min-h-screen bg-gray-50 py-10 px-4">
+      <Toaster position="top-center" reverseOrder={false} />
 
-       {/* THANH TIẾN ĐỘ */}
-       <div className="h-1 w-full bg-gray-100">
-          <div 
-             className={`h-full transition-all duration-300 ${reviewMode ? 'bg-green-500' : 'bg-blue-600'}`} 
-             style={{ width: `${progress}%` }}
-          ></div>
-       </div>
-
-       {/* NỘI DUNG CÂU HỎI */}
-       <div className="p-6 md:p-8 flex-1 flex flex-col justify-center">
-          <h2 className="text-lg font-bold text-gray-800 mb-6 leading-relaxed">
-             {currentQ.content}
-          </h2>
-
-          {/* GRID LAYOUT: 2 Cột để form gọn hơn */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-             {currentQ.options.map((opt: string, idx: number) => {
-                const label = LABELS[idx]; 
-                const isSelected = answers[currentQ.id] === label;
-                const displayContent = cleanOptionText(opt); // Text sạch, không bị cắt chữ
-
-                let containerStyle = "border-gray-200 hover:border-blue-300 hover:bg-gray-50 cursor-pointer";
-                let badgeStyle = "bg-gray-100 text-gray-500";
-
-                // --- Style khi đang làm bài ---
-                if (!reviewMode && isSelected) {
-                   containerStyle = "border-blue-500 bg-blue-50 ring-1 ring-blue-500 shadow-sm";
-                   badgeStyle = "bg-blue-600 text-white";
-                }
-
-                // --- Style khi Review ---
-                if (reviewMode) {
-                   containerStyle = "border-gray-100 opacity-60 cursor-default";
-                   
-                   // Nếu đây là đáp án ĐÚNG (khớp với correctLabel từ Backend)
-                   if (label === correctLabel) {
-                      containerStyle = "border-green-500 bg-green-50 ring-1 ring-green-500 opacity-100 font-medium";
-                      badgeStyle = "bg-green-600 text-white";
-                   } 
-                   // Nếu user chọn SAI
-                   else if (isSelected && reviewStatus === 'wrong') {
-                      containerStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100";
-                      badgeStyle = "bg-red-600 text-white";
-                   }
-                }
-
-                return (
-                   <div 
-                      key={idx}
-                      onClick={() => !reviewMode && setAnswers(prev => ({...prev, [currentQ.id]: label}))}
-                      className={`relative p-3 border rounded-xl transition-all duration-200 flex items-start gap-3 h-full ${containerStyle}`}
-                   >
-                      <span className={`w-6 h-6 rounded-md flex-shrink-0 flex items-center justify-center text-[10px] font-bold transition-colors mt-0.5 ${badgeStyle}`}>
-                         {label}
-                      </span>
-                      <span className="text-sm text-gray-700 leading-snug">{displayContent}</span>
-                   </div>
-                );
-             })}
-          </div>
-
-          {/* GIẢI THÍCH (Chỉ hiện khi Review) */}
-          {reviewMode && explanation && (
-             <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-100 text-xs text-gray-700 animate-in fade-in">
-                <strong className="text-yellow-600 uppercase tracking-wide block mb-1">💡 Giải thích:</strong>
-                {explanation}
-             </div>
-          )}
-       </div>
-
-       {/* FOOTER ĐIỀU HƯỚNG */}
-       <div className="p-4 border-t border-gray-50 flex gap-3 bg-gray-50/30">
-          <button 
-             onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-             disabled={currentIndex === 0}
-             className="flex-1 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-xs uppercase hover:bg-gray-50 disabled:opacity-50 transition"
-          >
-             Quay lại
-          </button>
-
-          {currentIndex < questions.length - 1 ? (
-             <button 
-                onClick={() => setCurrentIndex(prev => prev + 1)}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-blue-700 shadow-md transition"
-             >
-                Tiếp theo
-             </button>
+      {/* 1. VIEW CHỌN MÔN */}
+      {step === 'select_subject' && (
+        <div className="max-w-5xl mx-auto p-4 text-center">
+          <h2 className="text-2xl font-black text-gray-800 mb-8 uppercase tracking-tighter">Chọn môn học</h2>
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-blue-600 font-bold animate-pulse">AI đang soạn đề thi...</p>
+            </div>
           ) : (
-             !reviewMode && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              {SUBJECTS.map((sub) => (
                 <button 
-                   onClick={handleSubmit}
-                   disabled={loading}
-                   className="flex-[2] py-3 bg-green-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-green-700 shadow-md transition"
+                  key={sub.id} onClick={() => handleSelectSubject(sub.name)}
+                  className="group flex flex-col items-center p-5 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-500 hover:bg-blue-50 transition-all hover:-translate-y-1"
                 >
-                   {loading ? "Đang nộp..." : "Nộp bài"}
+                  <span className="text-3xl mb-3">{sub.icon}</span>
+                  <span className="text-xs font-bold text-gray-600 uppercase group-hover:text-blue-600 leading-tight">
+                    {sub.name}
+                  </span>
                 </button>
-             )
+              ))}
+            </div>
           )}
-       </div>
+        </div>
+      )}
+
+      {/* 2. VIEW KẾT QUẢ */}
+      {step === 'result' && resultData && !reviewMode && (
+        <div className="max-w-4xl mx-auto bg-white p-8 rounded-[2rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-300">
+          <div className="flex flex-col sm:flex-row justify-between items-center border-b border-gray-100 pb-6 mb-6 gap-6">
+             <div className="flex items-center gap-5">
+                <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl">🏆</div>
+                <div>
+                    <h2 className="text-xl font-black text-gray-800">{subject}</h2>
+                    <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest">
+                        {resultData.level}
+                    </span>
+                </div>
+             </div>
+             <div className="text-center">
+                <div className="text-5xl font-black text-indigo-600">{Math.round(resultData.score)}%</div>
+                <div className="text-[10px] font-bold text-gray-400 uppercase mt-1">Điểm tổng kết</div>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+             <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 relative">
+                <div className="absolute top-4 right-4 text-2xl opacity-20">🤖</div>
+                <h3 className="text-xs font-black text-amber-600 uppercase mb-3">Nhận xét từ AI</h3>
+                <p className="text-sm text-amber-900 font-medium leading-relaxed text-justify">
+                  "{resultData.evaluation?.evaluation_msg ? resultData.evaluation.evaluation_msg.replace(/(\d+\.\d)\d+/g, '$1') : "Đang phân tích kết quả..."}"
+                </p>
+             </div>
+
+             <div className="flex flex-col justify-between gap-4">
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-gray-50 p-3 rounded-xl text-center">
+                        <p className="text-[9px] text-gray-400 font-black uppercase">Đúng</p>
+                        <p className="text-lg font-black text-emerald-600">
+                          {resultData.correct_count ?? Math.round((resultData.score / 100) * questions.length)}/{resultData.total_questions || questions.length}
+                        </p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-xl text-center">
+                        <p className="text-[9px] text-gray-400 font-black uppercase">Nỗ lực</p>
+                        <p className="text-lg font-black text-orange-500">{Math.round(resultData.evaluation?.effort_score || 0)}%</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-xl text-center">
+                        <p className="text-[9px] text-gray-400 font-black uppercase">Thời gian</p>
+                        <p className="text-lg font-black text-gray-700">{formatTime(timer)}</p>
+                    </div>
+                </div>
+                
+                <div className="flex gap-3">
+                    <button onClick={() => { setReviewMode(true); setCurrentIndex(0); }} className="flex-1 py-3 bg-gray-900 text-white rounded-xl font-bold text-xs uppercase hover:bg-black transition-all shadow-lg">
+                      🔍 Xem lời giải
+                    </button>
+                    <button onClick={() => setStep('select_subject')} className="flex-1 py-3 bg-white text-gray-500 border border-gray-200 rounded-xl font-bold text-xs uppercase hover:bg-gray-50 transition-all">
+                      Làm đề khác
+                    </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. VIEW QUIZ & REVIEW */}
+      {((step === 'quiz') || (step === 'result' && reviewMode)) && currentQ && (
+        <div className="flex items-center justify-center min-h-[60vh] py-8">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden flex flex-col transition-all duration-300">
+             <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-white">
+                <div>
+                   <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-1">
+                      {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : subject}
+                   </span>
+                   <span className="text-xs font-bold text-gray-400">CÂU {currentIndex + 1}/{questions.length}</span>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                   {!reviewMode && (
+                      <div className="bg-indigo-50 px-3 py-1 rounded text-[10px] font-black text-indigo-600">
+                         ⏱️ {formatTime(timer)}
+                      </div>
+                   )}
+                   {reviewMode && (
+                      <button onClick={() => setReviewMode(false)} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">
+                         Thoát
+                      </button>
+                   )}
+                </div>
+             </div>
+
+             <div className="h-1 w-full bg-gray-50">
+                <div className={`h-full transition-all duration-300 ${reviewMode ? 'bg-emerald-500' : 'bg-indigo-600'}`} style={{ width: `${progress}%` }}></div>
+             </div>
+
+             <div className="p-6 md:p-8 bg-white">
+                <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-6 leading-relaxed">
+                    {currentQ.content}
+                </h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                   {currentQ.options.map((opt: string, idx: number) => {
+                      const label = LABELS[idx]; 
+                      const isSelected = answers[currentQ.id] === label;
+                      const displayContent = cleanOptionText(opt);
+
+                      let containerStyle = "border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer";
+                      let badgeStyle = "bg-gray-100 text-gray-500";
+                      let textStyle = "text-gray-600";
+
+                      if (!reviewMode && isSelected) {
+                         containerStyle = "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600 shadow-md";
+                         badgeStyle = "bg-indigo-600 text-white";
+                         textStyle = "text-indigo-900 font-bold";
+                      }
+
+                      if (reviewMode) {
+                         containerStyle = "border-gray-100 opacity-50 cursor-default"; 
+                         
+                         const isLabelMatch = normalizeLabel(correctLabelRaw) === label;
+                         const isTextMatch = correctLabelRaw && cleanOptionText(opt).toLowerCase().includes(correctLabelRaw.toLowerCase()) && correctLabelRaw.length > 2;
+                         const isCorrect = isLabelMatch || isTextMatch;
+
+                         if (isCorrect) {
+                            containerStyle = "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500 opacity-100 shadow-md";
+                            badgeStyle = "bg-emerald-500 text-white";
+                            textStyle = "text-emerald-900 font-bold";
+                         } else if (isSelected && reviewStatus === 'wrong') {
+                            containerStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100 shadow-md";
+                            badgeStyle = "bg-red-500 text-white";
+                            textStyle = "text-red-900 font-bold";
+                         }
+                      }
+
+                      return (
+                         <div key={idx} onClick={() => !reviewMode && setAnswers(prev => ({...prev, [currentQ.id]: label}))}
+                            className={`relative p-4 border rounded-xl transition-all flex items-start gap-3 ${containerStyle}`}
+                         >
+                            <span className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-black mt-0.5 ${badgeStyle}`}>
+                               {label}
+                            </span>
+                            <span className={`text-sm font-medium leading-relaxed ${textStyle}`}>{displayContent}</span>
+                         </div>
+                      );
+                   })}
+                </div>
+
+                {reviewMode && explanation && (
+                   <div className="mt-2 p-4 bg-blue-50 rounded-xl border border-blue-100 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">💡</span>
+                          <strong className="text-blue-700 uppercase tracking-widest text-[10px]">Giải thích chi tiết</strong>
+                      </div>
+                      <p className="text-sm text-blue-900 leading-relaxed font-medium">{explanation}</p>
+                   </div>
+                )}
+             </div>
+
+             <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-4">
+                <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0}
+                   className="flex-1 py-3 bg-white border border-gray-200 text-gray-500 rounded-lg font-black text-[10px] uppercase hover:bg-gray-100 disabled:opacity-50 transition-all"
+                > Quay lại </button>
+
+                {currentIndex < questions.length - 1 ? (
+                   <button onClick={() => setCurrentIndex(prev => prev + 1)}
+                      className="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-black text-[10px] uppercase hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all"
+                   > Tiếp theo </button>
+                ) : (
+                   !reviewMode && (
+                      <button onClick={handleSubmit} disabled={loading}
+                         className="flex-[2] py-3 bg-emerald-600 text-white rounded-lg font-black text-[10px] uppercase hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all"
+                      > {loading ? "Đang xử lý..." : "Nộp bài ngay"} </button>
+                   )
+                )}
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

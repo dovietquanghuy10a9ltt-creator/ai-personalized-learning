@@ -1,23 +1,35 @@
 # backend/agents/adaptive_agent.py
 import json
 import re
+import os
 from sqlalchemy.orm import Session
-from langchain.prompts import PromptTemplate
-from rag.llm import llm
-from rag.vector_store import get_vector_store
-from db.models import LearnerProfile, AssessmentResult
+from groq import Groq
+from dotenv import load_dotenv
+from db.models import LearnerProfile, AssessmentHistory
+
+# Tải biến môi trường
+load_dotenv()
 
 class AdaptiveAgent:
     def __init__(self, db: Session):
         self.db = db
-        self.vector_store = get_vector_store()
+        # 👇 SỬ DỤNG API KEY RIÊNG CHO ADAPTIVE AGENT
+        self.api_key = os.getenv("GROQ_KEY_ADAPTIVE")
+        if not self.api_key:
+            raise ValueError("Cần cấu hình GROQ_KEY_ADAPTIVE trong file .env")
+            
+        self.client = Groq(api_key=self.api_key)
+        self.model = "llama-3.3-70b-versatile" # Model mạnh nhất để phân tích lộ trình
 
     def generate_learning_path(self, subject: str):
         """
-        Tạo lộ trình cá nhân hóa dựa trên lỗ hổng kiến thức thực tế.
+        Tạo lộ trình cá nhân hóa dựa trên dữ liệu thực tế từ Database.
         """
         profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
-        last_test = self.db.query(AssessmentResult).filter_by(subject=subject).order_by(AssessmentResult.id.desc()).first()
+        # Tương tác với Assessment Agent thông qua bảng AssessmentHistory
+        last_test = self.db.query(AssessmentHistory)\
+            .filter_by(subject=subject)\
+            .order_by(AssessmentHistory.timestamp.desc()).first()
         
         if not profile:
             return {"message": "Chưa có dữ liệu học tập. Hãy làm bài kiểm tra trước!"}
@@ -25,97 +37,100 @@ class AdaptiveAgent:
         current_level = profile.current_level
         avg_score = profile.avg_score if profile.avg_score else 0
         
-        # Xử lý logic weak_points
-        weak_points = last_test.wrong_topics if (last_test and last_test.wrong_topics and last_test.wrong_topics != "Không có") else "Kiến thức tổng quát"
+        # Lấy chi tiết lỗi sai (wrong_detail) đã được Evaluation Agent lưu lại
+        wrong_data = "Kiến thức tổng quát"
+        if last_test and last_test.wrong_detail:
+            try:
+                # Trích xuất nội dung các câu sai để AI phân tích
+                wrongs = json.loads(last_test.wrong_detail)
+                wrong_data = "\n".join([f"- Câu hỏi: {w['question']} | Bạn chọn: {w['student_choice']}" for w in wrongs])
+            except:
+                wrong_data = "Lỗi trong quá trình đọc chi tiết bài làm."
 
-        docs = self.vector_store.similarity_search(
-            subject, 
-            k=5, 
-            filter={"subject": subject} 
-        )
-        context = "\n".join([d.page_content[:800] for d in docs])
+        prompt = f"""
+        BẠN LÀ GIA SƯ AI CHUYÊN NGHIỆP MÔN {subject}.
+        
+        DỮ LIỆU THỰC TẾ CỦA HỌC VIÊN:
+        - Trình độ hiện tại: {current_level}
+        - Điểm trung bình: {round(avg_score, 1)}/100
+        - CHI TIẾT CÁC CÂU LÀM SAI: 
+        {wrong_data}
 
-        prompt = PromptTemplate(
-            template="""
-            Bạn là Gia sư AI chuyên nghiệp môn {subject}.
-            
-            DỮ LIỆU THỰC TẾ CỦA HỌC VIÊN:
-            - Trình độ: {level}
-            - Điểm bài test gần nhất: {score}/100
-            - CÁC PHẦN ĐÃ LÀM SAI: {weak_points}
+        NHIỆM VỤ: Thiết kế lộ trình 3 bước "VÁ LỖ HỔNG".
+        1. Phân tích chính xác tại sao học viên sai dựa trên các câu hỏi trên.
+        2. Đề xuất hành động cụ thể để khắc phục.
+        3. Đi thẳng vào vấn đề, nghiêm khắc và chuyên nghiệp.
 
-            NHIỆM VỤ: Thiết kế lộ trình 3 bước "VÁ LỖ HỔNG".
-            - Bước 1: PHẢI tập trung giải thích tại sao học viên sai ở phần: {weak_points}.
-            - Tuyệt đối KHÔNG khen ngợi nếu điểm thấp hoặc có lỗi sai. Hãy đi thẳng vào vấn đề.
+        TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON LIST (KHÔNG GIẢI THÍCH THÊM):
+        [
+            {{
+                "step": "Bước 1", 
+                "topic": "Tên chủ đề cần vá", 
+                "action": "Hành động thực tế học viên phải làm", 
+                "reason": "Giải thích lỗi sai cốt lõi của họ"
+            }}
+        ]
+        """
 
-            Trả về JSON list:
-            [
-                {{"step": "Bước 1", "topic": "Vá lỗi {weak_points}", "action": "Hành động cụ thể", "reason": "Lý do vì sao bạn sai phần này"}},
-                ...
-            ]
-            """,
-            input_variables=["subject", "level", "score", "weak_points", "context"]
-        )
-
-        chain = prompt | llm
         try:
-            response = chain.invoke({
-                "subject": subject,
-                "level": current_level,
-                "score": round(avg_score, 1),
-                "weak_points": weak_points,
-                "context": context
-            })
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "Bạn là AI chuyên gia giáo dục. Chỉ trả về JSON hợp lệ."},
+                    {"role": "user", "content": prompt}
+                ],
+                model=self.model,
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
             
-            content = response.content if hasattr(response, 'content') else str(response)
+            content = chat_completion.choices[0].message.content
+            # Trích xuất JSON bằng Regex để đảm bảo an toàn
             match = re.search(r'\[.*\]', content, re.DOTALL)
             if match:
                 return json.loads(match.group(0))
-            return []
+            
+            # Nếu AI trả về object có key 'path' hoặc 'steps'
+            data = json.loads(content)
+            return data.get("path", data.get("steps", data))
+            
         except Exception as e:
-            print(f"Lỗi tạo lộ trình: {e}")
+            print(f"❌ Lỗi Adaptive Agent (Path): {e}")
             return []
 
     def chat_with_tutor(self, subject: str, user_message: str, roadmap_context: str):
         """
-        Gia sư AI đồng hành, biết rõ lỗi sai và trình độ thực tế.
+        Gia sư AI đồng hành, sử dụng API riêng biệt.
         """
         profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
-        last_test = self.db.query(AssessmentResult).filter_by(subject=subject).order_by(AssessmentResult.id.desc()).first()
+        last_test = self.db.query(AssessmentHistory)\
+            .filter_by(subject=subject)\
+            .order_by(AssessmentHistory.timestamp.desc()).first()
         
         current_level = profile.current_level if profile else "Beginner"
-        # Ép giá trị wrong_topics 
-        wrong_topics = last_test.wrong_topics if (last_test and last_test.wrong_topics and last_test.wrong_topics != "Không có") else "Cần rà soát lại kiến thức cơ bản"
+        wrong_info = last_test.wrong_detail if (last_test and last_test.wrong_detail) else "Không có dữ liệu lỗi."
+
+        prompt = f"""
+        BẠN LÀ GIA SƯ AI MÔN {subject}.
         
-        prompt = PromptTemplate(
-            template="""
-            BẠN LÀ GIA SƯ AI MÔN {subject}.
-            
-            TRẠNG THÁI HỌC VIÊN:
-            - Trình độ: {level} (Hãy dùng từ ngữ phù hợp với trình độ này).
-            - Lỗi sai thực tế trong bài kiểm tra: {wrong_topics}
-            - Lộ trình đang học: {roadmap}
+        BỐI CẢNH HỌC VIÊN:
+        - Trình độ: {current_level}
+        - Lịch sử lỗi sai: {wrong_info}
+        - Lộ trình đang theo dõi: {roadmap_context}
 
-            QUY TẮC TƯƠNG TÁC:
-            1. Tuyệt đối KHÔNG nói "bạn chưa từng làm sai" nếu dữ liệu báo lỗi là: {wrong_topics}.
-            2. Nếu học viên có lỗi sai, hãy nghiêm túc chỉ ra và đề xuất ôn tập phần đó ngay.
-            3. Trả lời ngắn gọn, tập trung vào kiến thức chuyên môn.
+        QUY TẮC:
+        1. Nếu học viên hỏi kiến thức, hãy liên hệ trực tiếp với những lỗi họ đã mắc phải.
+        2. Ngôn ngữ chuyên nghiệp, tập trung lấp lỗ hổng.
+        3. Tuyệt đối không khen ngợi sáo rỗng.
 
-            Học viên hỏi: "{message}"
-            Gia sư trả lời:
-            """,
-            input_variables=["subject", "level", "roadmap", "wrong_topics", "message"]
-        )
+        Học viên hỏi: "{user_message}"
+        """
 
-        chain = prompt | llm
         try:
-            response = chain.invoke({
-                "subject": subject,
-                "level": current_level,
-                "roadmap": roadmap_context,
-                "wrong_topics": wrong_topics,
-                "message": user_message
-            })
-            return response.content if hasattr(response, 'content') else str(response)
+            chat_completion = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=self.model,
+                temperature=0.5
+            )
+            return chat_completion.choices[0].message.content
         except Exception as e:
-            return f"Gia sư gặp lỗi kết nối: {str(e)}"
+            return f"❌ Gia sư AI gặp lỗi kết nối API: {str(e)}"

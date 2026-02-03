@@ -1,14 +1,25 @@
-# backend/agents/content_agent.py
 import os
 import re
+import json
+from groq import Groq
+from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredPowerPointLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.prompts import PromptTemplate
 from rag.vector_store import get_vector_store
-from rag.llm import llm 
+
+# Tải biến môi trường
+load_dotenv()
 
 class ContentAgent:
     def __init__(self):
+        # 👇 SỬ DỤNG API KEY RIÊNG CHO CONTENT AGENT
+        self.api_key = os.getenv("GROQ_KEY_CONTENT")
+        if not self.api_key:
+            raise ValueError("Cần cấu hình GROQ_KEY_CONTENT trong file .env")
+            
+        self.client = Groq(api_key=self.api_key)
+        self.model = "llama-3.3-70b-versatile"
+        
         self.vector_store = get_vector_store()
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -16,7 +27,7 @@ class ContentAgent:
             separators=["\n\n", "\n", " ", ""]
         )
         
-        # Danh sách môn học chuẩn để đối soát cứng
+        # Danh sách môn học chuẩn
         self.subjects = [
             "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương",
             "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++",
@@ -28,42 +39,38 @@ class ContentAgent:
 
     def _detect_subject(self, text_sample: str, file_name: str):
         """
-        Nhận diện môn học thông minh dựa trên: Tên file + Từ khóa đặc trưng + AI
+        Nhận diện môn học thông minh bằng API Groq riêng.
         """
         # 1. Ưu tiên kiểm tra nhanh qua tên file
         for s in self.subjects:
             if s.lower() in file_name.lower():
                 return s
 
-        # 2. Dùng AI nhận diện với bộ quy tắc phân loại chặt chẽ
-        prompt = PromptTemplate(
-            template="""
-            Bạn là chuyên gia phân loại tài liệu học thuật. 
-            Xác định môn học phù hợp nhất từ danh sách: {subject_list}
+        # 2. Dùng AI nhận diện với bộ quy tắc phân loại
+        prompt = f"""
+        Bạn là chuyên gia phân loại tài liệu học thuật. 
+        Xác định môn học phù hợp nhất từ danh sách: {', '.join(self.subjects)}
 
-            QUY TẮC PHÂN LOẠI (ƯU TIÊN CAO NHẤT):
-            - MẠNG MÁY TÍNH: OSI, TCP/IP, IP Address, Router, Switch, LAN, WAN, Topology, HTTP, DNS, Ethernet.
-            - CẤU TRÚC DỮ LIỆU VÀ GIẢI THUẬT: Linked List, Stack, Queue, Tree, Graph, Sorting, Big O, Đồ thị.
-            - PP LẬP TRÌNH HƯỚNG ĐỐI TƯỢNG: Class, Object, Inheritance, Polymorphism, Encapsulation.
-            - GIẢI TÍCH: Đạo hàm, Tích phân, Chuỗi, Vi phân, Hàm số.
-            - CƠ SỞ HỆ ĐIỀU HÀNH: Process, Thread, Deadlock, Memory Management, Scheduling, Shell.
+        QUY TẮC PHÂN LOẠI:
+        - MẠNG MÁY TÍNH: OSI, TCP/IP, IP Address, Router, Switch, LAN, WAN, Topology.
+        - CẤU TRÚC DỮ LIỆU VÀ GIẢI THUẬT: Linked List, Stack, Queue, Tree, Graph, Big O.
+        - PP LẬP TRÌNH HƯỚNG ĐỐI TƯỢNG: Class, Object, Inheritance, Polymorphism.
+        - GIẢI TÍCH: Đạo hàm, Tích phân, Vi phân.
 
-            Nội dung trích dẫn: {sample}
+        Nội dung trích dẫn: {text_sample[:4000]}
 
-            CHỈ TRẢ VỀ TÊN MÔN HỌC CHÍNH XÁC CÓ TRONG DANH SÁCH. KHÔNG GIẢI THÍCH.
-            Tên môn học:
-            """,
-            input_variables=["subject_list", "sample"]
-        )
+        CHỈ TRẢ VỀ TÊN MÔN HỌC CHÍNH XÁC. KHÔNG GIẢI THÍCH.
+        """
         
         try:
-            response = (prompt | llm).invoke({
-                "subject_list": ", ".join(self.subjects),
-                "sample": text_sample[:4000]
-            })
-            detected_name = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+            chat_completion = self.client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=self.model,
+                temperature=0.1
+            )
+            detected_name = chat_completion.choices[0].message.content.strip()
             
-            # Làm sạch chuỗi và đối soát với danh sách chuẩn
+            # Làm sạch chuỗi và đối soát
             detected_name = re.sub(r'[^\w\s\+]', '', detected_name)
             for s in self.subjects:
                 if s.lower() in detected_name.lower():
@@ -74,63 +81,34 @@ class ContentAgent:
             return "Khác"
 
     def quick_analyze(self, file_path: str):
-        """
-        Đọc nhanh tài liệu và gợi ý môn học, không thực hiện lưu trữ vào DB.
-        Sử dụng cho bước 'AI gợi ý' trên giao diện.
-        """
+        """Phân tích nhanh để gợi ý môn học trên giao diện."""
         try:
             file_name = os.path.basename(file_path)
-            file_ext = os.path.splitext(file_name)[1].lower()
-            
-            # Khởi tạo loader phù hợp (chỉ load 5 trang đầu để phân tích nhanh)
-            if file_ext == ".pdf":
-                loader = PyPDFLoader(file_path)
-            elif file_ext == ".docx":
-                loader = Docx2txtLoader(file_path)
-            elif file_ext == ".pptx":
-                loader = UnstructuredPowerPointLoader(file_path)
-            else:
-                return "Khác"
+            loader = self._get_loader(file_path)
+            if not loader: return "Khác"
 
             raw_documents = loader.load()
-            
-            # Lấy mẫu văn bản từ 5 trang đầu để AI đoán nhanh
             text_sample = " ".join([doc.page_content for doc in raw_documents[:5]])
-            
             return self._detect_subject(text_sample, file_name)
         except Exception as e:
             print(f"⚠️ Lỗi phân tích nhanh: {e}")
             return "Khác"
 
     def process_file(self, file_path: str, manual_subject: str = None):
-        """
-        Quy trình xử lý chính: Chia nhỏ và lưu trữ vào Vector Store.
-        Ưu tiên nhãn thủ công đã được người dùng xác nhận.
-        """
+        """Quy trình nạp tài liệu vào Vector Store."""
         try:
             file_name = os.path.basename(file_path)
-            file_ext = os.path.splitext(file_name)[1].lower()
-            
-            if file_ext == ".pdf":
-                loader = PyPDFLoader(file_path)
-            elif file_ext == ".docx":
-                loader = Docx2txtLoader(file_path)
-            elif file_ext == ".pptx":
-                loader = UnstructuredPowerPointLoader(file_path)
-            else:
-                return False
+            loader = self._get_loader(file_path)
+            if not loader: return False
 
             raw_documents = loader.load()
             
-            # Nếu người dùng đã xác nhận/chọn lại nhãn, dùng nhãn đó.
+            # Xác định môn học
             if manual_subject and manual_subject in self.subjects:
                 detected_subject = manual_subject
-                print(f"🎯 [Xác nhận] Gán nhãn '{detected_subject}' cho tài liệu: {file_name}")
             else:
-                # Nếu không, AI tự nhận diện chính xác qua 10 trang đầu
                 full_text_sample = " ".join([doc.page_content for doc in raw_documents[:10]])
                 detected_subject = self._detect_subject(full_text_sample, file_name)
-                print(f"🤖 [Tự động] AI nhận diện: {detected_subject}")
 
             for doc in raw_documents:
                 doc.metadata["subject"] = detected_subject
@@ -139,12 +117,19 @@ class ContentAgent:
             
             if chunks:
                 self.vector_store.add_documents(chunks)
-                print(f"✅ Đã nạp {len(chunks)} đoạn vào môn: {detected_subject}")
+                print(f"✅ Content Agent: Đã nạp {len(chunks)} đoạn vào môn {detected_subject}")
                 return {"success": True, "subject": detected_subject}
             return False
 
         except Exception as e:
-            print(f"❌ Lỗi xử lý file '{file_path}': {e}")
+            print(f"❌ Lỗi xử lý file Content Agent: {e}")
             return False
+
+    def _get_loader(self, file_path):
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext == ".pdf": return PyPDFLoader(file_path)
+        if file_ext == ".docx": return Docx2txtLoader(file_path)
+        if file_ext == ".pptx": return UnstructuredPowerPointLoader(file_path)
+        return None
 
 content_agent = ContentAgent()

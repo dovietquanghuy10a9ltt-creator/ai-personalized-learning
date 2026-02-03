@@ -1,7 +1,8 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { api } from '../services/api';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, AreaChart, Area } from 'recharts';
+import axios from 'axios';
+import { Award, Zap, Target, TrendingUp, History } from 'lucide-react';
 
 const LearningDashboard = () => {
   const [data, setData] = useState<any>(null);
@@ -10,10 +11,11 @@ const LearningDashboard = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await api.getLearningStats();
-        setData(res);
+        // Gọi API History tổng hợp (đảm bảo Backend trả về đủ các trường mới)
+        const res = await axios.get("http://localhost:8000/api/assessment/history/all"); 
+        setData(res.data);
       } catch (e) {
-        console.error(e);
+        console.error("Lỗi lấy dữ liệu thống kê:", e);
       } finally {
         setLoading(false);
       }
@@ -21,46 +23,86 @@ const LearningDashboard = () => {
     fetchStats();
   }, []);
 
-  if (loading) return <div className="p-20 text-center font-bold text-blue-600 animate-pulse">📊 ĐANG TỔNG HỢP KẾT QUẢ...</div>;
-  if (!data) return <div className="text-center p-10">Chưa có dữ liệu.</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="font-black text-indigo-600 uppercase tracking-widest text-xs animate-pulse">Agent đang tổng hợp dữ liệu...</p>
+    </div>
+  );
+  
+  if (!data) return <div className="text-center p-10 font-bold text-slate-400">Chưa có dữ liệu học tập.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-8 pb-20">
+    <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-10 pb-24">
       
-      {/* --- PHẦN 1: BIỂU ĐỒ TỔNG QUAN --- */}
-      <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter border-l-4 border-blue-600 pl-4">
-        Tổng quan năng lực
-      </h2>
+      {/* --- PHẦN 1: THẺ TỔNG QUAN (DỮ LIỆU TỪ PROFILING & EVALUATION AGENT) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard 
+          icon={<Award className="text-indigo-600" />} 
+          label="Trình độ tổng thể" 
+          value={data.summary.global_level} 
+          sub="Cập nhật từ Profiling Agent"
+          color="bg-indigo-50" 
+        />
+        <StatCard 
+          icon={<Zap className="text-orange-600" />} 
+          label="Chỉ số nỗ lực" 
+          value={`${data.summary.avg_effort}%`} 
+          sub="Tính theo thời gian làm bài"
+          color="bg-orange-50" 
+        />
+        <StatCard 
+          icon={<Target className="text-emerald-600" />} 
+          label="Độ chính xác" 
+          value={`${data.summary.avg_score}%`} 
+          sub="Điểm trung bình các môn"
+          color="bg-emerald-50" 
+        />
+        <StatCard 
+          icon={<TrendingUp className="text-blue-600" />} 
+          label="Xu hướng" 
+          value={data.summary.trend} 
+          sub="Sự tiến bộ gần đây"
+          color="bg-blue-50" 
+        />
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Biểu đồ đường */}
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-lg">
-          <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">📉 Xu hướng điểm số</h3>
-          <div className="h-60">
+      {/* --- PHẦN 2: BIỂU ĐỒ TRỰC QUAN --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Biểu đồ vùng: Xu hướng điểm số & nỗ lực */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8">📉 Phân tích tiến độ học tập</h3>
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.charts.history}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} axisLine={false} tickLine={false} domain={[0, 100]} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                <Line type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={3} dot={{r:4, fill:'#2563eb'}} />
-              </LineChart>
+              <AreaChart data={data.charts.history}>
+                <defs>
+                  <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="date" fontSize={10} axisLine={false} tickLine={false} tick={{fill: '#94a3b8'}} />
+                <YAxis fontSize={10} axisLine={false} tickLine={false} domain={[0, 100]} tick={{fill: '#94a3b8'}} />
+                <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                <Area type="monotone" dataKey="score" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorScore)" />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Biểu đồ cột */}
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-lg">
-          <h3 className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-4">📊 Trình độ theo môn</h3>
-          <div className="h-60">
+        {/* Biểu đồ cột: Trình độ thực tế từng môn */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8">📊 Năng lực theo chuyên môn</h3>
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.charts.subjects} layout="vertical">
+              <BarChart data={data.charts.subjects} layout="vertical" margin={{ left: 20 }}>
                 <XAxis type="number" domain={[0, 100]} hide />
-                <YAxis dataKey="subject" type="category" width={100} fontSize={9} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                <Bar dataKey="avg" radius={[0, 4, 4, 0]} barSize={20} background={{ fill: '#f9fafb', radius: 4 }}>
+                <YAxis dataKey="subject" type="category" fontSize={10} tickLine={false} axisLine={false} width={100} tick={{fill: '#475569', fontWeight: 'bold'}} />
+                <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '20px', border: 'none' }} />
+                <Bar dataKey="avg" radius={[0, 10, 10, 0]} barSize={12}>
                   {data.charts.subjects.map((entry: any, index: number) => (
-                    <Cell key={index} fill={entry.avg >= 80 ? '#10b981' : (entry.avg >= 50 ? '#3b82f6' : '#ef4444')} />
+                    <Cell key={index} fill={entry.avg >= 80 ? '#10b981' : (entry.avg >= 50 ? '#4f46e5' : '#ef4444')} />
                   ))}
                 </Bar>
               </BarChart>
@@ -69,56 +111,80 @@ const LearningDashboard = () => {
         </div>
       </div>
 
-      {/* --- PHẦN 2: DANH SÁCH CHI TIẾT (HISTORY TABLE) --- */}
-      <div className="mt-10">
-        <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter border-l-4 border-orange-500 pl-4 mb-6">
-          Lịch sử làm bài chi tiết
-        </h2>
+      {/* --- PHẦN 3: NHẬT KÝ CHI TIẾT --- */}
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100"><History className="w-5 h-5 text-indigo-600" /></div>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">Nhật ký Agent đánh giá</h2>
+        </div>
         
-        <div className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-[9px] font-black text-gray-400 uppercase tracking-widest">
+            <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
               <tr>
-                <th className="px-6 py-4">Thời gian</th>
-                <th className="px-6 py-4">Môn học</th>
-                <th className="px-6 py-4">Thời lượng</th>
-                <th className="px-6 py-4 text-center">Kết quả (Đúng/Tổng)</th>
-                <th className="px-6 py-4 text-right">Điểm số</th>
+                <th className="px-8 py-5">Ngày / Môn học</th>
+                <th className="px-8 py-5">Kết quả</th>
+                <th className="px-8 py-5">Nỗ lực</th>
+                <th className="px-8 py-5 text-right">Đánh giá</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-slate-50">
               {data.details.map((item: any) => (
-                <tr key={item.id} className="hover:bg-blue-50/50 transition-colors group">
-                  <td className="px-6 py-4 text-xs text-gray-500 font-medium">{item.date}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-gray-800">{item.subject}</td>
-                  <td className="px-6 py-4 text-xs text-gray-500">{item.duration}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="bg-gray-100 text-gray-600 py-1 px-3 rounded-lg text-xs font-bold">
-                      {item.correct}/{item.total_questions}
+                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6">
+                    <p className="text-sm font-black text-slate-800">{item.subject}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">{item.date}</p>
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className="bg-slate-100 text-slate-600 py-1.5 px-4 rounded-full text-[11px] font-black border border-slate-200">
+                      {item.correct}/{item.total_questions} CÂU
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-2">
+                       <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-orange-500" style={{ width: `${item.effort}%` }}></div>
+                       </div>
+                       <span className="text-[11px] font-black text-orange-600">{item.effort}%</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-right">
                     <span className={`text-sm font-black ${
-                      item.score >= 80 ? 'text-green-600' : (item.score >= 50 ? 'text-blue-600' : 'text-red-500')
+                      item.score >= 80 ? 'text-emerald-500' : (item.score >= 50 ? 'text-indigo-600' : 'text-red-500')
                     }`}>
-                      {item.score}đ
+                      {item.score}%
                     </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          
           {data.details.length === 0 && (
-            <div className="p-8 text-center text-gray-400 text-sm italic">
-              Bạn chưa làm bài kiểm tra nào.
+            <div className="p-20 text-center flex flex-col items-center">
+              <div className="text-4xl mb-4 grayscale opacity-20">📭</div>
+              <p className="text-slate-400 font-bold text-sm">Chưa có lịch sử làm bài được ghi nhận.</p>
             </div>
           )}
         </div>
       </div>
-
     </div>
   );
 };
+
+// Sub-component cho thẻ thống kê
+function StatCard({ icon, label, value, sub, color }: any) {
+  return (
+    <div className="bg-white p-6 rounded-[2rem] shadow-lg shadow-slate-200/30 border border-slate-50 flex items-center gap-5 transition-transform hover:scale-[1.02]">
+      <div className={`p-4 ${color} rounded-2xl shadow-inner`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+        <p className="text-xl font-black text-slate-800 tracking-tight">{value}</p>
+        <p className="text-[9px] text-slate-400 font-medium mt-1">{sub}</p>
+      </div>
+    </div>
+  );
+}
 
 export default LearningDashboard;

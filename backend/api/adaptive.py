@@ -1,17 +1,9 @@
 # backend/api/adaptive.py
-import os
-import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from db.database import get_db
-from db.models import AssessmentHistory
-from groq import Groq
-
-# --- CẤU HÌNH GROQ ---
-# Giữ nguyên Key của bạn (Key không bị thay đổi, chỉ có tên model thay đổi)
-GROQ_API_KEY = ""  
-client = Groq(api_key=GROQ_API_KEY)
+from agents.adaptive_agent import AdaptiveAgent # Import Agent đã nâng cấp
 
 router = APIRouter()
 
@@ -24,86 +16,47 @@ class TutorChatRequest(BaseModel):
 # --- API 1: PHÂN TÍCH LỖI SAI & ĐỀ XUẤT LỘ TRÌNH ---
 @router.get("/recommend/{subject}")
 def get_learning_recommendation(subject: str, db: Session = Depends(get_db)):
-    # 1. Lấy bài kiểm tra gần nhất
-    last_test = db.query(AssessmentHistory)\
-        .filter(AssessmentHistory.subject == subject)\
-        .order_by(AssessmentHistory.timestamp.desc())\
-        .first()
-
-    if not last_test:
-        return {
-            "analysis": "Chưa có dữ liệu để phân tích.",
-            "roadmap": ["Hãy làm bài kiểm tra đầu tiên để AI biết trình độ của bạn."]
-        }
-
-    # 2. Kiểm tra xem có lỗi sai không
-    if not last_test.wrong_detail or last_test.score == 100:
-        return {
-            "analysis": "Tuyệt vời! Bạn không làm sai câu nào trong bài kiểm tra gần nhất.",
-            "roadmap": ["Duy trì phong độ", "Thử sức với các bài nâng cao hơn"]
-        }
-
-    # 3. Gửi lỗi sai cho Groq phân tích
+    """
+    API điều phối: Gọi Adaptive Agent để phân tích lỗi từ Database và tạo lộ trình.
+    """
     try:
-        wrong_questions = json.loads(last_test.wrong_detail)
+        # Khởi tạo Agent (Sử dụng GROQ_KEY_ADAPTIVE riêng biệt)
+        agent = AdaptiveAgent(db)
         
-        prompt = f"""
-        Bạn là Gia sư AI môn {subject}. Học viên vừa sai các câu sau:
-        {json.dumps(wrong_questions, ensure_ascii=False)}
-
-        Nhiệm vụ:
-        1. Phân tích NGẮN GỌN nguyên nhân sai (hổng kiến thức gì?).
-        2. Đề xuất 3 hành động cụ thể để khắc phục.
-
-        BẮT BUỘC trả về JSON chuẩn format này (không giải thích thêm):
-        {{
-            "analysis": "Nội dung phân tích...",
-            "roadmap": ["Bước 1...", "Bước 2...", "Bước 3..."]
-        }}
-        """
+        # Gọi logic xử lý từ Agent
+        result = agent.generate_learning_path(subject)
         
-        # Gọi Llama 3.3 (Model mới nhất, thay thế cho model cũ bị lỗi)
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "Bạn là AI chỉ trả về kết quả dưới dạng JSON hợp lệ."},
-                {"role": "user", "content": prompt}
-            ],
-            # 👇 ĐÃ ĐỔI TÊN MODEL MỚI NHẤT
-            model="llama-3.3-70b-versatile", 
-            temperature=0.3,
-            response_format={"type": "json_object"} 
-        )
-        
-        result_content = chat_completion.choices[0].message.content
-        return json.loads(result_content)
+        if not result:
+            return {
+                "analysis": "Hệ thống ghi nhận bạn có lỗ hổng kiến thức cần ôn tập lại.",
+                "roadmap": ["Xem lại lý thuyết chương này", "Làm lại bài kiểm tra để AI đánh giá lại"]
+            }
+            
+        return result
 
     except Exception as e:
-        print(f"❌ LỖI GROQ (RECOMMEND): {str(e)}") 
-        # Fallback nếu lỗi
-        return {
-            "analysis": "Hệ thống ghi nhận bạn có lỗ hổng kiến thức cần ôn tập lại.",
-            "roadmap": ["Xem lại lý thuyết chương này", "Làm lại bài kiểm tra"]
-        }
+        print(f"❌ LỖI API RECOMMEND: {str(e)}")
+        raise HTTPException(status_code=500, detail="Không thể tạo lộ trình học tập lúc này.")
 
 # --- API 2: CHAT VỚI GIA SƯ ---
 @router.post("/chat")
 def chat_with_adaptive_tutor(req: TutorChatRequest, db: Session = Depends(get_db)):
+    """
+    API điều phối: Gọi Adaptive Agent để chat với ngữ cảnh cá nhân hóa.
+    """
     try:
-        context_prompt = f"""
-        Bạn là Gia sư AI môn {req.subject}.
-        Tình trạng học viên: {req.roadmap_context}
-        Câu hỏi: "{req.message}"
-        Hãy trả lời ngắn gọn, thân thiện và đi thẳng vào vấn đề.
-        """
+        # Khởi tạo Agent
+        agent = AdaptiveAgent(db)
         
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": context_prompt}],
-            # 👇 ĐÃ ĐỔI TÊN MODEL MỚI NHẤT
-            model="llama-3.1-8b-instant",
+        # Sử dụng hàm chat chuyên sâu của Agent
+        response = agent.chat_with_tutor(
+            subject=req.subject, 
+            user_message=req.message, 
+            roadmap_context=req.roadmap_context
         )
         
-        return {"reply": chat_completion.choices[0].message.content}
+        return {"reply": response}
         
     except Exception as e:
-        print(f"❌ LỖI CHAT GROQ: {str(e)}")
-        return {"reply": f"Gặp lỗi khi gọi AI: {str(e)}"}
+        print(f"❌ LỖI API CHAT: {str(e)}")
+        return {"reply": "Gia sư AI đang gặp sự cố kết nối, vui lòng thử lại sau."}
