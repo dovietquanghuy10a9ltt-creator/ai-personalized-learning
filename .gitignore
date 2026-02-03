@@ -1,0 +1,13 @@
+**/__pycache__/
+*.pyc
+
+venv/
+.env
+
+chroma_db/
+data/
+data_uploads/
+
+node_modules/
+.next/
+dist/

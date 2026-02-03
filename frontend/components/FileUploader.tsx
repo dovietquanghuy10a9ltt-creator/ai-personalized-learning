@@ -1,0 +1,267 @@
+"use client";
+import React, { useState, useCallback } from 'react';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
+import { UploadCloud, FileText, Loader2, X, CheckCircle2, ChevronDown, BrainCircuit } from 'lucide-react';
+
+const SUBJECTS = [
+  "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
+  "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
+  "Cấu trúc dữ liệu và giải thuật", "Hệ cơ sở dữ liệu", "Kiến trúc máy tính", 
+  "Xác suất thống kê", "Toán học tính toán", "Mạng máy tính", 
+  "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
+];
+
+export default function FileUploader() {
+  const [file, setFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false); 
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle');
+  const [selectedSubject, setSelectedSubject] = useState("");
+  
+  // 👇 Thêm state để tạo hiệu ứng khi kéo file vào
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  // --- HÀM XỬ LÝ CHUNG: GỌI KHI CÓ FILE (TỪ CLICK HOẶC DROP) ---
+  const processFile = async (selectedFile: File) => {
+    if (!selectedFile) return;
+
+    // Kiểm tra nhanh đuôi file (Optional)
+    const validTypes = ['.pdf', '.docx', '.txt', '.pptx'];
+    const fileExt = "." + selectedFile.name.split('.').pop()?.toLowerCase();
+    if (!validTypes.includes(fileExt)) {
+      toast.error("Định dạng file không hỗ trợ! Chỉ nhận PDF, DOCX, PPTX.");
+      return;
+    }
+
+    setFile(selectedFile);
+    setIsAnalyzing(true);
+    setSelectedSubject("");
+    setProcessingStage('idle');
+    setUploadProgress(0);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      const res = await axios.post("http://localhost:8000/api/upload/analyze-subject", formData);
+      const suggested = res.data.suggested_subject;
+      setSelectedSubject(suggested || "Khác");
+    } catch (error) {
+      console.error(error);
+      setSelectedSubject("Khác");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // 1. SỰ KIỆN CLICK CHỌN FILE
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) processFile(selectedFile);
+  };
+
+  // 2. 👇 CÁC SỰ KIỆN KÉO THẢ (DRAG & DROP) MỚI THÊM VÀO
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(true); // Bật hiệu ứng sáng lên
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false); // Tắt hiệu ứng
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles && droppedFiles.length > 0) {
+      processFile(droppedFiles[0]); // Xử lý file đầu tiên được thả vào
+    }
+  }, []);
+
+  // 3. NÚT XÁC NHẬN NẠP
+  const handleConfirmUpload = async () => {
+    if (!file || !selectedSubject) return;
+
+    setIsUploading(true);
+    setProcessingStage('uploading');
+    setUploadProgress(0);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("manual_subject", selectedSubject);
+
+    try {
+      await axios.post("http://localhost:8000/api/upload/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (ev) => {
+          const total = ev.total || file.size || 1;
+          const percent = Math.round((ev.loaded * 100) / total);
+          setUploadProgress(percent);
+          if (percent >= 100) setProcessingStage('processing');
+        },
+      });
+      setProcessingStage('done');
+      toast.success("Nạp tri thức thành công!");
+    } catch (error) {
+      toast.error("Lỗi upload.");
+      setProcessingStage('idle');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    setSelectedSubject("");
+    setProcessingStage('idle');
+    setUploadProgress(0);
+  };
+
+  return (
+    <div className="p-0">
+      
+      {/* --- TRẠNG THÁI 1: CHƯA CHỌN FILE --- */}
+      {!file ? (
+        <label 
+          // 👇 Gắn các sự kiện Drag & Drop vào đây
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex flex-col items-center justify-center w-full h-44 border border-dashed rounded-lg cursor-pointer transition-all bg-white group
+            ${isDragActive 
+              ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' // Hiệu ứng khi kéo file vào
+              : 'border-slate-300 hover:bg-slate-50 hover:border-indigo-500'
+            }`}
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none"> {/* pointer-events-none để tránh conflict sự kiện con */}
+            <div className={`p-3 border rounded-full mb-3 shadow-sm transition-transform
+               ${isDragActive ? 'bg-white border-indigo-200 scale-110' : 'bg-white border-slate-100 group-hover:scale-110'}`}>
+                <UploadCloud className={`w-5 h-5 ${isDragActive ? 'text-indigo-600' : 'text-indigo-600'}`} />
+            </div>
+            <p className="text-sm text-slate-600 font-medium">
+              <span className="font-bold text-indigo-600">Click</span> hoặc kéo thả tài liệu
+            </p>
+            {/* 👇 Cập nhật dòng text hỗ trợ PPTX */}
+            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">PDF, DOCX, PPTX (Max 20MB)</p>
+          </div>
+          {/* 👇 Cập nhật accept để nhận PPTX */}
+          <input type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx,.txt,.pptx" />
+        </label>
+      ) : (
+        
+        // --- TRẠNG THÁI 2: ĐÃ CHỌN FILE (Giao diện giữ nguyên như cũ) ---
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            
+            {/* 1. Header hiển thị tên file */}
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-white border border-slate-200 rounded flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{file.name}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                </div>
+                {!isUploading && processingStage !== 'done' && (
+                    <button onClick={removeFile} className="text-slate-400 hover:text-red-500 transition-colors">
+                        <X className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
+
+            {/* 2. Body Form */}
+            <div className="p-4 space-y-4">
+                
+                {/* A. Phần chọn môn học */}
+                {isAnalyzing ? (
+                    <div className="py-2 flex items-center gap-2 text-indigo-600">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-xs font-bold">AI đang phân tích nội dung...</span>
+                    </div>
+                ) : processingStage !== 'done' ? (
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                            <span>Môn học</span>
+                            <span className="flex items-center gap-1 text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                <BrainCircuit className="w-3 h-3" /> AI Gợi ý
+                            </span>
+                        </label>
+                        <div className="relative">
+                            <select 
+                                value={selectedSubject}
+                                onChange={(e) => setSelectedSubject(e.target.value)}
+                                disabled={isUploading}
+                                className="w-full p-2.5 pl-3 pr-8 bg-white border border-slate-300 rounded-md text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none appearance-none transition-all cursor-pointer hover:border-slate-400"
+                            >
+                                <option value="" disabled>-- Chọn môn học --</option>
+                                {SUBJECTS.map(sub => (
+                                    <option key={sub} value={sub}>{sub}</option>
+                                ))}
+                                <option value="Khác">Khác</option>
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                        <div>
+                            <p className="text-xs font-bold text-emerald-700 uppercase">Lưu trữ thành công</p>
+                            <p className="text-[10px] text-emerald-600">Môn: {selectedSubject}</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* B. Thanh tiến độ */}
+                {isUploading && (
+                    <div className="space-y-1.5 pt-2">
+                        <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
+                            <span>{processingStage === 'uploading' ? "Uploading..." : "Processing..."}</span>
+                            <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-indigo-600 rounded-full transition-all duration-200 ease-out" 
+                                style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                            {processingStage === 'processing' && (
+                                <div className="absolute inset-0 w-full h-full bg-white/30 animate-[shimmer_1s_infinite]"></div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. Nút bấm Action */}
+                {!isUploading && processingStage !== 'done' && (
+                    <button 
+                        onClick={handleConfirmUpload}
+                        disabled={isAnalyzing || !selectedSubject}
+                        className="w-full py-2.5 bg-slate-900 text-white rounded-md text-xs font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                    >
+                        Xác nhận nạp
+                    </button>
+                )}
+
+                {processingStage === 'done' && (
+                    <button 
+                        onClick={removeFile}
+                        className="w-full py-2.5 bg-white border border-slate-300 text-slate-600 rounded-md text-xs font-bold uppercase tracking-widest hover:bg-slate-50 transition-all mt-2"
+                    >
+                        Nạp tài liệu khác
+                    </button>
+                )}
+            </div>
+        </div>
+      )}
+    </div>
+  );
+}
