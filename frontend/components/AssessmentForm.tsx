@@ -23,6 +23,7 @@ const SUBJECTS = [
 ];
 
 const LABELS = ['A', 'B', 'C', 'D'];
+const STORAGE_KEY = 'quiz_auto_save_data'; // Key lưu trong bộ nhớ trình duyệt
 
 const AssessmentForm = () => {
   const [step, setStep] = useState<'select_subject' | 'quiz' | 'result'>('select_subject');
@@ -36,6 +37,45 @@ const AssessmentForm = () => {
   const [reviewMode, setReviewMode] = useState(false); 
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // --- 1. CƠ CHẾ KHÔI PHỤC DỮ LIỆU KHI F5 (AUTO RESTORE) ---
+  useEffect(() => {
+    // Chạy 1 lần duy nhất khi trang vừa load xong
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        // Chỉ khôi phục nếu dữ liệu hợp lệ và đang ở trạng thái làm bài
+        if (parsed.step === 'quiz' && parsed.questions && parsed.questions.length > 0) {
+          setSubject(parsed.subject);
+          setQuestions(parsed.questions);
+          setAnswers(parsed.answers || {});
+          setTimer(parsed.timer || 0);
+          setStep('quiz');
+          toast.success("Đã khôi phục bài làm của bạn!", { icon: '🔄', duration: 3000 });
+        }
+      } catch (error) {
+        console.error("Lỗi khôi phục dữ liệu:", error);
+        localStorage.removeItem(STORAGE_KEY); // Xóa nếu dữ liệu lỗi
+      }
+    }
+  }, []);
+
+  // --- 2. CƠ CHẾ TỰ ĐỘNG LƯU (AUTO SAVE) ---
+  useEffect(() => {
+    // Chỉ lưu khi đang làm bài (step = quiz)
+    if (step === 'quiz' && questions.length > 0) {
+      const dataToSave = {
+        step: 'quiz',
+        subject,
+        questions,
+        answers,
+        timer
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    }
+  }, [step, subject, questions, answers, timer]);
+
+  // --- 3. LOGIC TIMER ---
   useEffect(() => {
     let interval: any;
     if (step === 'quiz' && !loading) {
@@ -43,6 +83,40 @@ const AssessmentForm = () => {
     }
     return () => clearInterval(interval);
   }, [step, loading]);
+
+  // --- 4. LOGIC CHẶN NÚT BACK VÀ CẢNH BÁO ĐÓNG TAB ---
+  useEffect(() => {
+    if (step === 'quiz') {
+      // A. Cảnh báo khi đóng Tab hoặc F5 (Vẫn giữ để an toàn)
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        e.returnValue = '';
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+
+      // B. Chặn Nút Back bằng History Trap
+      window.history.pushState(null, "", window.location.href);
+      const handlePopState = (e: PopStateEvent) => {
+        const confirmLeave = window.confirm("⚠️ CẢNH BÁO:\n\nBạn đang làm bài thi. Nếu thoát, bài làm sẽ bị xóa.\n\nBạn có chắc chắn muốn thoát?");
+        if (confirmLeave) {
+          // Nếu thoát thật -> Xóa bộ nhớ -> Cho về trang chủ
+          localStorage.removeItem(STORAGE_KEY); 
+          window.removeEventListener('popstate', handlePopState);
+          window.history.back();
+          setStep('select_subject');
+        } else {
+          // Nếu ở lại -> Đẩy lại bẫy history
+          window.history.pushState(null, "", window.location.href);
+        }
+      };
+      window.addEventListener('popstate', handlePopState);
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [step]);
 
   const cleanOptionText = (text: string) => text.replace(/^[A-D]\.\s*/, "").trim();
   
@@ -57,6 +131,21 @@ const AssessmentForm = () => {
     return `${m}:${sec < 10 ? '0' : ''}${sec}`;
   };
 
+  // --- HÀM THOÁT AN TOÀN (Xóa bộ nhớ khi thoát) ---
+  const handleSafeExit = () => {
+    if (Object.keys(answers).length > 0) {
+      if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi.\nNếu thoát bây giờ, kết quả sẽ bị xóa và không thể khôi phục.\n\nBạn có chắc chắn muốn thoát?")) {
+        localStorage.removeItem(STORAGE_KEY); // Xóa bản lưu
+        setStep('select_subject');
+        setAnswers({});
+        setTimer(0);
+      }
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+      setStep('select_subject');
+    }
+  };
+
   const handleSelectSubject = async (selectedSub: string) => {
     setSubject(selectedSub);
     setLoading(true);
@@ -65,6 +154,8 @@ const AssessmentForm = () => {
     setResultData(null);
     setReviewMode(false);
     setCurrentIndex(0);
+    // Xóa bộ nhớ cũ trước khi tạo đề mới
+    localStorage.removeItem(STORAGE_KEY);
 
     try {
       const res = await axios.post("http://localhost:8000/api/assessment/generate", { subject: selectedSub });
@@ -96,6 +187,7 @@ const AssessmentForm = () => {
       const res = await axios.post("http://localhost:8000/api/assessment/submit", submissionData);
       setResultData(res.data);
       setStep('result');
+      localStorage.removeItem(STORAGE_KEY); // Nộp xong thì xóa bản lưu nháp
       toast.dismiss();
       toast.success("Nộp bài thành công!", { duration: 3000 });
     } catch (error) {
@@ -105,7 +197,25 @@ const AssessmentForm = () => {
     }
   };
 
-  // --- LOGIC XỬ LÝ CHO VIEW QUIZ & REVIEW ---
+  const handleCheckAndSubmit = () => {
+    const missingIndexes = questions
+      .map((q, idx) => (answers[q.id] ? null : idx + 1))
+      .filter((idx) => idx !== null);
+
+    if (missingIndexes.length > 0) {
+      toast.error(
+        `🛑 Bạn chưa làm các câu: ${missingIndexes.join(", ")}\nVui lòng hoàn thành trước khi nộp!`,
+        { duration: 4000, icon: '⚠️' }
+      );
+      return; 
+    }
+
+    if (window.confirm("✅ Bạn đã hoàn thành tất cả câu hỏi.\nXác nhận nộp bài ngay?")) {
+      handleSubmit();
+    }
+  };
+
+  // --- LOGIC VIEW ---
   const currentQ = questions[currentIndex];
   let reviewStatus = null;
   let explanation = null;
@@ -123,7 +233,6 @@ const AssessmentForm = () => {
   }
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
 
-  // --- RETURN TRỰC TIẾP (KHÔNG DÙNG HÀM RENDER RIÊNG) ---
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <Toaster position="top-center" reverseOrder={false} />
@@ -227,10 +336,19 @@ const AssessmentForm = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
+                   {/* NÚT THOÁT & ĐỒNG HỒ */}
                    {!reviewMode && (
-                      <div className="bg-indigo-50 px-3 py-1 rounded text-[10px] font-black text-indigo-600">
-                         ⏱️ {formatTime(timer)}
-                      </div>
+                      <>
+                        <button 
+                          onClick={handleSafeExit} 
+                          className="px-3 py-1 bg-gray-100 text-gray-500 rounded hover:bg-red-50 hover:text-red-600 text-[10px] font-bold uppercase transition-colors"
+                        >
+                          Thoát
+                        </button>
+                        <div className="bg-indigo-50 px-3 py-1 rounded text-[10px] font-black text-indigo-600">
+                            ⏱️ {formatTime(timer)}
+                        </div>
+                      </>
                    )}
                    {reviewMode && (
                       <button onClick={() => setReviewMode(false)} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-colors">
@@ -260,27 +378,27 @@ const AssessmentForm = () => {
                       let textStyle = "text-gray-600";
 
                       if (!reviewMode && isSelected) {
-                         containerStyle = "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600 shadow-md";
-                         badgeStyle = "bg-indigo-600 text-white";
-                         textStyle = "text-indigo-900 font-bold";
+                          containerStyle = "border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600 shadow-md";
+                          badgeStyle = "bg-indigo-600 text-white";
+                          textStyle = "text-indigo-900 font-bold";
                       }
 
                       if (reviewMode) {
-                         containerStyle = "border-gray-100 opacity-50 cursor-default"; 
-                         
-                         const isLabelMatch = normalizeLabel(correctLabelRaw) === label;
-                         const isTextMatch = correctLabelRaw && cleanOptionText(opt).toLowerCase().includes(correctLabelRaw.toLowerCase()) && correctLabelRaw.length > 2;
-                         const isCorrect = isLabelMatch || isTextMatch;
+                          containerStyle = "border-gray-100 opacity-50 cursor-default"; 
+                          
+                          const isLabelMatch = normalizeLabel(correctLabelRaw) === label;
+                          const isTextMatch = correctLabelRaw && cleanOptionText(opt).toLowerCase().includes(correctLabelRaw.toLowerCase()) && correctLabelRaw.length > 2;
+                          const isCorrect = isLabelMatch || isTextMatch;
 
-                         if (isCorrect) {
-                            containerStyle = "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500 opacity-100 shadow-md";
-                            badgeStyle = "bg-emerald-500 text-white";
-                            textStyle = "text-emerald-900 font-bold";
-                         } else if (isSelected && reviewStatus === 'wrong') {
-                            containerStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100 shadow-md";
-                            badgeStyle = "bg-red-500 text-white";
-                            textStyle = "text-red-900 font-bold";
-                         }
+                          if (isCorrect) {
+                             containerStyle = "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500 opacity-100 shadow-md";
+                             badgeStyle = "bg-emerald-500 text-white";
+                             textStyle = "text-emerald-900 font-bold";
+                          } else if (isSelected && reviewStatus === 'wrong') {
+                             containerStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100 shadow-md";
+                             badgeStyle = "bg-red-500 text-white";
+                             textStyle = "text-red-900 font-bold";
+                          }
                       }
 
                       return (
@@ -318,8 +436,10 @@ const AssessmentForm = () => {
                    > Tiếp theo </button>
                 ) : (
                    !reviewMode && (
-                      <button onClick={handleSubmit} disabled={loading}
-                         className="flex-[2] py-3 bg-emerald-600 text-white rounded-lg font-black text-[10px] uppercase hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all"
+                      <button 
+                          onClick={handleCheckAndSubmit} 
+                          disabled={loading}
+                          className="flex-[2] py-3 bg-emerald-600 text-white rounded-lg font-black text-[10px] uppercase hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all"
                       > {loading ? "Đang xử lý..." : "Nộp bài ngay"} </button>
                    )
                 )}
