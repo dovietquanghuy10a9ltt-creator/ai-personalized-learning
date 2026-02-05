@@ -30,8 +30,6 @@ export default function EvaluationPage() {
       const res = await axios.get(`http://localhost:8000/api/assessment/history/${selectedSubject}`);
       const data = res.data.history || [];
       
-      // SỬA LỖI 1: Bỏ .reverse() vì Backend đã sắp xếp Mới -> Cũ rồi.
-      // Dữ liệu nhận về: [Bài Mới Nhất, ..., Bài Cũ Nhất]
       setHistory(data);
       
       if (data.length > 0) {
@@ -49,9 +47,8 @@ export default function EvaluationPage() {
     }
   };
 
-  // SỬA LỖI 2: Xử lý múi giờ UTC -> Giờ Việt Nam chuẩn xác
+  //Xử lý múi giờ UTC -> Giờ Việt Nam chuẩn xác
   const formatDateTime = (isoString: string) => {
-    // Thêm 'Z' vào cuối nếu thiếu để báo hiệu đây là giờ UTC
     const dateString = isoString.endsWith('Z') ? isoString : `${isoString}Z`;
     const d = new Date(dateString);
     
@@ -139,7 +136,7 @@ export default function EvaluationPage() {
                   {history.map((item, idx) => (
                     <tr key={item.id || idx} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors">
                       
-                      {/* 1. THỜI ĐIỂM NỘP (Ngày giờ - Đã fix múi giờ) */}
+                      {/* 1. THỜI ĐIỂM NỘP */}
                       <td className="p-4">
                         <div className="flex items-center gap-2 font-medium text-slate-600">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />

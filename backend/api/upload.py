@@ -6,9 +6,9 @@ from agents.content_agent import content_agent
 
 router = APIRouter()
 
-# 👇 Hàm phụ trợ: Kiểm tra đuôi file hợp lệ
+#Hàm phụ trợ: Kiểm tra đuôi file hợp lệ
 def validate_file_extension(filename: str):
-    allowed_extensions = {".pdf", ".docx", ".doc", ".pptx", ".txt"} # Thêm .pptx vào đây
+    allowed_extensions = {".pdf", ".docx", ".doc", ".pptx", ".txt"}
     ext = os.path.splitext(filename)[1].lower()
     if ext not in allowed_extensions:
         raise HTTPException(status_code=400, detail=f"File không hỗ trợ. Chỉ nhận: {', '.join(allowed_extensions)}")
@@ -53,7 +53,6 @@ async def upload_document(
     # Check đuôi file
     validate_file_extension(file.filename)
     
-    # ... (Phần còn lại giữ nguyên như code của bạn) ...
     temp_dir = "temp_uploads"
     os.makedirs(temp_dir, exist_ok=True)
     

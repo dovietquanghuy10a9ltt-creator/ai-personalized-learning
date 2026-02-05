@@ -14,7 +14,7 @@ class LearnerProfile(Base):
     total_tests = Column(Integer, default=0)
     avg_score = Column(Float, default=0.0)
 
-# 2. Bảng Lịch sử làm bài (Đã thêm wrong_detail)
+# 2. Bảng Lịch sử làm bài
 class AssessmentHistory(Base):
     __tablename__ = "assessment_history"
     id = Column(Integer, primary_key=True, index=True)
@@ -25,7 +25,7 @@ class AssessmentHistory(Base):
     total_questions = Column(Integer, default=0)
     correct_count = Column(Integer, default=0)
     
-    # 👇 QUAN TRỌNG: Cột này lưu danh sách câu sai để Gia sư AI phân tích
+    # Cột này lưu danh sách câu sai để Gia sư AI phân tích
     wrong_detail = Column(Text, nullable=True) 
     
     level_at_time = Column(String) 
@@ -52,7 +52,7 @@ class Chunk(Base):
     subject = Column(String, index=True)
     source_file = Column(String)
 
-# 4. Kết quả đánh giá chi tiết (Có thể ít dùng nhưng cứ giữ lại nếu cần logic cũ)
+# 4. Kết quả đánh giá chi tiết
 class AssessmentResult(Base):
     __tablename__ = "assessment_results"
     id = Column(Integer, primary_key=True, index=True)

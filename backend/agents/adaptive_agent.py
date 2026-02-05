@@ -13,13 +13,12 @@ load_dotenv()
 class AdaptiveAgent:
     def __init__(self, db: Session):
         self.db = db
-        # 👇 SỬ DỤNG API KEY RIÊNG CHO ADAPTIVE AGENT
         self.api_key = os.getenv("GROQ_KEY_ADAPTIVE")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_ADAPTIVE trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant" # Model mạnh nhất để phân tích lộ trình
+        self.model = "llama-3.1-8b-instant" # Model 
 
     def generate_learning_path(self, subject: str):
         """

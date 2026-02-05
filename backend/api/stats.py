@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.get("/learning-stats")
 async def get_stats(db: Session = Depends(get_db)):
-    # 1. Dữ liệu Biểu đồ (Như cũ)
+    # 1. Dữ liệu Biểu đồ
     history_query = db.query(AssessmentHistory).order_by(AssessmentHistory.timestamp.asc()).all()
     chart_data = [
         {"date": h.timestamp.strftime("%d/%m"), "score": h.score, "subject": h.subject} 
@@ -22,7 +22,7 @@ async def get_stats(db: Session = Depends(get_db)):
         for p in profiles
     ]
 
-    # 2. 👇 THÊM: Danh sách chi tiết 20 bài làm gần nhất để hiển thị bảng
+    # 2.Danh sách chi tiết 20 bài làm gần nhất để hiển thị bảng
     detailed_history = db.query(AssessmentHistory).order_by(desc(AssessmentHistory.timestamp)).limit(20).all()
     history_list = [
         {

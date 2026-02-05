@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import List
 import json
 
-# Import các Agent chuyên biệt
 from agents.assessment_agent import AssessmentAgent
 from agents.evaluation_agent import EvaluationAgent
 from agents.profiling_agent import ProfilingAgent
@@ -27,7 +26,7 @@ class SubmitRequest(BaseModel):
     answers: List[AnswerSubmission]
     duration_seconds: int = 300 
 
-# --- API 1: SINH ĐỀ THI ---
+# --- SINH ĐỀ THI ---
 @router.post("/generate")
 def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
     if not req.subject or req.subject.strip() == "":
@@ -44,7 +43,7 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
         
     return {"questions": questions, "subject": req.subject}
 
-# --- API 2: NỘP BÀI & CHẤM ĐIỂM ---
+# --- NỘP BÀI & CHẤM ĐIỂM ---
 @router.post("/submit")
 def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     user_map = {a.question_id: a.selected_option for a in req.answers}
@@ -82,7 +81,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
                 "correct_answer": q.correct_answer
             })
         
-        # Gửi correct_label về frontend để hiển thị màu xanh
+        # Gửi correct_label về frontend
         detailed_results.append({
             "question_id": q.id,
             "is_correct": is_correct,
@@ -134,7 +133,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         "message": "Đã chấm điểm thành công!"
     }
 
-# --- API 3: LẤY LỊCH SỬ (ĐÃ SỬA LOGIC TÍNH TREND & DURATION) ---
+# --- LẤY LỊCH SỬ ---
 @router.get("/history/{subject}")
 def get_evaluation_history(subject: str, db: Session = Depends(get_db)):
     # 1. Lấy toàn bộ lịch sử CŨ -> MỚI để tính đà tiến bộ
@@ -154,7 +153,7 @@ def get_evaluation_history(subject: str, db: Session = Depends(get_db)):
         trend = h.score - previous_score
         previous_score = h.score # Cập nhật lại điểm tham chiếu cho vòng sau
 
-        # Tính lại Effort giả định (nếu cần hiển thị thanh nỗ lực)
+        # Tính lại Effort giả định
         duration = h.duration_seconds if h.duration_seconds else 0
         effort_percent = min(100, int((duration / 300) * 100))
 

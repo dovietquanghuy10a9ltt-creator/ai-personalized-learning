@@ -20,7 +20,6 @@ export default function FileUploader() {
   const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle');
   const [selectedSubject, setSelectedSubject] = useState("");
   
-  // 👇 Thêm state để tạo hiệu ứng khi kéo file vào
   const [isDragActive, setIsDragActive] = useState(false);
 
   // --- HÀM XỬ LÝ CHUNG: GỌI KHI CÓ FILE (TỪ CLICK HOẶC DROP) ---
@@ -62,17 +61,17 @@ export default function FileUploader() {
     if (selectedFile) processFile(selectedFile);
   };
 
-  // 2. 👇 CÁC SỰ KIỆN KÉO THẢ (DRAG & DROP) MỚI THÊM VÀO
+  // 2.CÁC SỰ KIỆN KÉO THẢ (DRAG & DROP)
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragActive(true); // Bật hiệu ứng sáng lên
+    setIsDragActive(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragActive(false); // Tắt hiệu ứng
+    setIsDragActive(false);
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -131,7 +130,6 @@ export default function FileUploader() {
       {/* --- TRẠNG THÁI 1: CHƯA CHỌN FILE --- */}
       {!file ? (
         <label 
-          // 👇 Gắn các sự kiện Drag & Drop vào đây
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -149,15 +147,13 @@ export default function FileUploader() {
             <p className="text-sm text-slate-600 font-medium">
               <span className="font-bold text-indigo-600">Click</span> hoặc kéo thả tài liệu
             </p>
-            {/* 👇 Cập nhật dòng text hỗ trợ PPTX */}
             <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">PDF, DOCX, PPTX (Max 20MB)</p>
           </div>
-          {/* 👇 Cập nhật accept để nhận PPTX */}
           <input type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx,.txt,.pptx" />
         </label>
       ) : (
         
-        // --- TRẠNG THÁI 2: ĐÃ CHỌN FILE (Giao diện giữ nguyên như cũ) ---
+        // --- TRẠNG THÁI 2: ĐÃ CHỌN FILE ---
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
             
             {/* 1. Header hiển thị tên file */}

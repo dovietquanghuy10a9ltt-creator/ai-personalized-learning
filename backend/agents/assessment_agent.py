@@ -32,8 +32,6 @@ class AssessmentAgent:
             print(f"Lỗi reset data: {e}")
 
     def get_or_create_quiz(self, subject: str, num_questions: int = 10):
-        # --- BƯỚC 1: KIỂM TRA CHẤT LƯỢNG DỮ LIỆU CŨ ---
-        # Kiểm tra xem dữ liệu trong kho có bị lỗi "Toàn A" không
         existing_qs = self.db.query(QuestionBank).filter_by(subject=subject).all()
         if existing_qs:
             count_A = sum(1 for q in existing_qs if q.correct_answer == 'A')

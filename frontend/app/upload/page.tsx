@@ -2,16 +2,14 @@
 import React from 'react';
 import FileUploader from '@/components/FileUploader';
 import { Database, ShieldCheck, Sparkles, Zap, Target } from 'lucide-react';
-// import { Toaster } from 'react-hot-toast'; // Đã xóa import Toaster
 
 export default function UploadPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] py-8 md:py-12 font-sans">
-      {/* Đã xóa <Toaster /> để tránh trùng lặp */}
       
       <div className="max-w-4xl mx-auto px-6 space-y-10">
         
-        {/* --- HEADER SECTION: TINH GỌN & SANG TRỌNG --- */}
+        {/* --- HEADER SECTION --- */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b-2 border-slate-100">
           <div className="flex items-center gap-6">
             <div className="p-4 bg-slate-900 rounded-[1.5rem] shadow-2xl shadow-slate-200 rotate-3">
@@ -40,16 +38,14 @@ export default function UploadPage() {
 
         {/* --- UPLOAD COMPONENT: COMPACT & BALANCED --- */}
         <div className="group relative">
-          {/* Hiệu ứng đổ bóng trang trí phía sau */}
           <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-[3rem] blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
           
           <div className="relative bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/60 p-3 border border-slate-50">
-            {/* Đây là nơi component FileUploader của bạn hiển thị */}
             <FileUploader />
           </div>
         </div>
 
-        {/* --- FEATURES GRID: CÂN ĐỐI & DỄ NHÌN --- */}
+        {/* --- FEATURES GRID --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <FeatureCard 
             icon={<Zap className="w-5 h-5 text-amber-500" />}
@@ -79,7 +75,6 @@ export default function UploadPage() {
   );
 }
 
-// Sub-component cho các thẻ tính năng để code gọn hơn
 function FeatureCard({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
   return (
     <div className="p-6 bg-white rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group">

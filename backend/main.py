@@ -24,17 +24,16 @@ app.add_middleware(
 
 # --- ĐĂNG KÝ ROUTER ---
 
-# 1. Assessment: /api/assessment/...
+# 1. Assessment
 app.include_router(assessment.router, prefix="/api/assessment", tags=["Assessment"])
 
-# 2. Upload: /api/upload/... 
-# 👇 SỬA TẠI ĐÂY: Đổi prefix từ "/api" thành "/api/upload"
+# 2. Upload
 app.include_router(upload.router, prefix="/api/upload", tags=["Upload"])
 
-# 3. Adaptive: /api/adaptive/...
+# 3. Adaptive
 app.include_router(adaptive.router, prefix="/api/adaptive", tags=["AI Tutor"])
 
-# 4. Stats: /api/stats/...
+# 4. Stats
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 
 @app.get("/")

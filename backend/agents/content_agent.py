@@ -11,7 +11,6 @@ from rag.vector_store import get_vector_store
 # Tải biến môi trường
 load_dotenv()
 
-# 👇 CLASS MỚI: Tự chế bộ đọc PPTX nhẹ và nhanh hơn
 class CustomPPTXLoader:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -34,7 +33,6 @@ class CustomPPTXLoader:
 
 class ContentAgent:
     def __init__(self):
-        # 👇 SỬ DỤNG API KEY RIÊNG CHO CONTENT AGENT
         self.api_key = os.getenv("GROQ_KEY_CONTENT")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_CONTENT trong file .env")
@@ -61,7 +59,7 @@ class ContentAgent:
 
     def _detect_subject(self, text_sample: str, file_name: str):
         """
-        Nhận diện môn học thông minh v2: Kết hợp Tên File + Nội Dung + Mapping từ khóa.
+        Nhận diện môn học thông minh : Kết hợp Tên File + Nội Dung + Mapping từ khóa.
         """
         # Tạo danh sách môn học dưới dạng chuỗi để đưa vào prompt
         subjects_str = "\n".join([f"- {s}" for s in self.subjects])
@@ -109,7 +107,6 @@ class ContentAgent:
                     return s
             
             # 3. Fallback: Kiểm tra khớp một phần (Ví dụ AI trả về "C++" thay vì tên đầy đủ)
-            # Bước này giúp bắt được các trường hợp AI lười viết hết tên
             for s in self.subjects:
                 if detected_name.lower() in s.lower() or s.lower() in detected_name.lower():
                     return s

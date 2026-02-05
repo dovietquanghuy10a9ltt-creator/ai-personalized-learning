@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from db.database import get_db
-from agents.adaptive_agent import AdaptiveAgent # Import Agent đã nâng cấp
+from agents.adaptive_agent import AdaptiveAgent
 
 router = APIRouter()
 
@@ -13,14 +13,14 @@ class TutorChatRequest(BaseModel):
     message: str
     roadmap_context: str 
 
-# --- API 1: PHÂN TÍCH LỖI SAI & ĐỀ XUẤT LỘ TRÌNH ---
+# --- PHÂN TÍCH LỖI SAI & ĐỀ XUẤT LỘ TRÌNH ---
 @router.get("/recommend/{subject}")
 def get_learning_recommendation(subject: str, db: Session = Depends(get_db)):
     """
     API điều phối: Gọi Adaptive Agent để phân tích lỗi từ Database và tạo lộ trình.
     """
     try:
-        # Khởi tạo Agent (Sử dụng GROQ_KEY_ADAPTIVE riêng biệt)
+        # Khởi tạo Agent
         agent = AdaptiveAgent(db)
         
         # Gọi logic xử lý từ Agent
@@ -38,7 +38,7 @@ def get_learning_recommendation(subject: str, db: Session = Depends(get_db)):
         print(f"❌ LỖI API RECOMMEND: {str(e)}")
         raise HTTPException(status_code=500, detail="Không thể tạo lộ trình học tập lúc này.")
 
-# --- API 2: CHAT VỚI GIA SƯ ---
+# --- CHAT VỚI GIA SƯ ---
 @router.post("/chat")
 def chat_with_adaptive_tutor(req: TutorChatRequest, db: Session = Depends(get_db)):
     """

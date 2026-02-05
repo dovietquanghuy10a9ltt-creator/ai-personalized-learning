@@ -11,7 +11,7 @@ const LearningDashboard = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Gọi API History tổng hợp (đảm bảo Backend trả về đủ các trường mới)
+        // Gọi API History tổng hợp
         const res = await axios.get("http://localhost:8000/api/assessment/history/all"); 
         setData(res.data);
       } catch (e) {

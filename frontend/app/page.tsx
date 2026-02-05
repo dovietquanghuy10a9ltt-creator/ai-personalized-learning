@@ -16,9 +16,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-700">
       
-      {/* --- HERO SECTION: Phần giới thiệu ấn tượng --- */}
+      {/* --- HERO SECTION --- */}
       <section className="relative pt-12 pb-16 md:pt-24 md:pb-20 overflow-hidden">
-        {/* Hiệu ứng nền mờ (Blur Background) */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-r from-blue-100/40 to-indigo-100/40 rounded-full blur-3xl -z-10 opacity-70"></div>
         
         <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
@@ -51,7 +50,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* --- AGENTS GRID: Danh sách các chức năng --- */}
+      {/* --- AGENTS GRID --- */}
       <section className="max-w-7xl mx-auto px-6 pb-24">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           
@@ -103,7 +102,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* --- WORKFLOW: Quy trình học tập (Trang trí thêm cho chuyên nghiệp) --- */}
+      {/* --- WORKFLOW: Quy trình học tập --- */}
       <section className="bg-white border-t border-slate-100 py-16">
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
@@ -129,7 +128,6 @@ export default function Home() {
   );
 }
 
-// --- SUB COMPONENTS: Card tái sử dụng ---
 
 const FeatureCard = ({ href, icon, iconBg, title, desc, linkText, borderColor, isHighlight }: any) => {
   return (

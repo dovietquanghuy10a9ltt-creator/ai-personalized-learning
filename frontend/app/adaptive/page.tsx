@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Toaster, toast } from 'react-hot-toast';
-import ReactMarkdown from 'react-markdown'; // <--- IMPORT THƯ VIỆN NÀY
+import ReactMarkdown from 'react-markdown';
 import { 
   Compass, Zap, Send, Bot, User, Map, 
   Sparkles, MessageSquare, BookOpen, GraduationCap 
@@ -90,14 +90,14 @@ export default function AdaptivePage() {
   };
 
   return (
-    // FIX LAYOUT: Giữ nguyên bố cục fixed chống cuộn trang
+    
     <div className="fixed inset-0 bg-[#F8FAFC] font-sans text-slate-800 flex flex-col pt-[80px] pb-4 px-6 overflow-hidden">
       <Toaster position="top-center" />
       
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 grid grid-cols-2 gap-6 min-h-0 w-full max-w-[1600px] mx-auto">
         
-        {/* === CỘT TRÁI: LỘ TRÌNH (50%) === */}
+        {/* === CỘT TRÁI: LỘ TRÌNH === */}
         <div className="flex flex-col gap-4 h-full min-h-0">
           
           {/* 1. Control Box */}
@@ -173,7 +173,7 @@ export default function AdaptivePage() {
           </div>
         </div>
 
-        {/* === CỘT PHẢI: GIA SƯ CHAT (50%) === */}
+        {/* === CỘT PHẢI: GIA SƯ CHAT === */}
         <div className="flex flex-col bg-white rounded-xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden h-full min-h-0">
           
           {/* 1. Header */}
@@ -192,7 +192,7 @@ export default function AdaptivePage() {
             </div>
           </div>
 
-          {/* 2. Messages - CÓ MARKDOWN */}
+          {/* 2. Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 custom-scrollbar">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center opacity-40">
@@ -213,7 +213,7 @@ export default function AdaptivePage() {
                       ? 'bg-slate-900 text-white rounded-tr-none' 
                       : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none'
                   }`}>
-                    {/* 👇 SỬ DỤNG REACT MARKDOWN ĐỂ RENDER ĐẸP MẮT 👇 */}
+                    {/* SỬ DỤNG REACT MARKDOWN ĐỂ RENDER */}
                     {msg.role === 'assistant' ? (
                        <ReactMarkdown 
                           components={{
@@ -229,7 +229,7 @@ export default function AdaptivePage() {
                           {msg.content}
                        </ReactMarkdown>
                     ) : (
-                       // Tin nhắn của User thì hiện text thường
+                       // Tin nhắn của User
                        <p className="whitespace-pre-wrap font-medium">{msg.content}</p>
                     )}
                   </div>

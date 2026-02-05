@@ -12,7 +12,6 @@ load_dotenv()
 class ProfilingAgent:
     def __init__(self, db: Session):
         self.db = db
-        # 👇 SỬ DỤNG API KEY RIÊNG CHO PROFILING AGENT
         self.api_key = os.getenv("GROQ_KEY_PROFILING")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_PROFILING trong file .env")
@@ -33,7 +32,7 @@ class ProfilingAgent:
         profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
         avg_score = profile.avg_score if profile else score_percent
         
-        # 2. PHÂN LOẠI CƠ BẢN (Rule-based theo Mục 2.2)
+        # 2. PHÂN LOẠI CƠ BẢN (Rule-based)
         if score_percent < 40:
             base_level = "Beginner"
         elif 40 <= score_percent <= 70:

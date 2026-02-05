@@ -8,7 +8,6 @@ load_dotenv()
 
 class EvaluationAgent:
     def __init__(self, db_session=None):
-        # 👇 SỬ DỤNG API KEY RIÊNG CHO EVALUATION AGENT
         self.api_key = os.getenv("GROQ_KEY_EVALUATION")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_EVALUATION trong file .env")
@@ -17,7 +16,7 @@ class EvaluationAgent:
         self.model = "llama-3.1-8b-instant" 
         self.db = db_session
 
-    # --- 1. HÀM CHẤM ĐIỂM CHI TIẾT (QUAN TRỌNG ĐỂ FIX LỖI FRONTEND) ---
+    # --- 1. HÀM CHẤM ĐIỂM CHI TIẾT ---
     def evaluate_submission(self, submission_answers, original_questions):
         """
         So sánh đáp án người dùng chọn với đáp án đúng trong Database.
@@ -54,7 +53,6 @@ class EvaluationAgent:
                 "user_choice": user_label,
                 "is_correct": is_correct,
                 "explanation": question.explanation,
-                # 👇 Gửi về Frontend đúng ký tự này để tô màu xanh
                 "correct_label": correct_label 
             })
 
@@ -65,7 +63,7 @@ class EvaluationAgent:
             "results": results
         }
 
-    # --- 2. HÀM ĐÁNH GIÁ HIỆU SUẤT (CODE CỦA BẠN - ĐÃ TỐT) ---
+    # --- 2. HÀM ĐÁNH GIÁ HIỆU SUẤT ---
     def evaluate_performance(self, test_score_percent: float, time_spent_seconds: int = 300, previous_avg_score: float = 50.0):
         """
         Đánh giá kết quả học tập dựa trên trọng số điểm số, nỗ lực và sự tiến bộ.
@@ -94,7 +92,7 @@ class EvaluationAgent:
         }
 
     def _get_ai_feedback(self, score, effort, improvement):
-        # 1. Python tự tính toán "Chỉ thị" (Directive) trước để AI không bị "ngáo"
+        # 1. Python tự tính toán "Chỉ thị" (Directive)
         # Logic này giúp định hướng AI viết đúng trọng tâm ngay lập tức
         directive = ""
         if score >= 80 and effort < 30:

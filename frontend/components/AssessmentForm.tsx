@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 
-// --- CONFIG ---
 const SUBJECTS = [
   { id: 1, name: "Vật lý", icon: "⚛️" },
   { id: 2, name: "Đại số tuyến tính", icon: "📐" },
@@ -37,14 +36,12 @@ const AssessmentForm = () => {
   const [reviewMode, setReviewMode] = useState(false); 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // --- 1. CƠ CHẾ KHÔI PHỤC DỮ LIỆU KHI F5 (AUTO RESTORE) ---
+  // --- 1. CƠ CHẾ KHÔI PHỤC DỮ LIỆU KHI F5 ---
   useEffect(() => {
-    // Chạy 1 lần duy nhất khi trang vừa load xong
     const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
-        // Chỉ khôi phục nếu dữ liệu hợp lệ và đang ở trạng thái làm bài
         if (parsed.step === 'quiz' && parsed.questions && parsed.questions.length > 0) {
           setSubject(parsed.subject);
           setQuestions(parsed.questions);
@@ -87,7 +84,7 @@ const AssessmentForm = () => {
   // --- 4. LOGIC CHẶN NÚT BACK VÀ CẢNH BÁO ĐÓNG TAB ---
   useEffect(() => {
     if (step === 'quiz') {
-      // A. Cảnh báo khi đóng Tab hoặc F5 (Vẫn giữ để an toàn)
+      // A. Cảnh báo khi đóng Tab hoặc F5
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
         e.preventDefault();
         e.returnValue = '';

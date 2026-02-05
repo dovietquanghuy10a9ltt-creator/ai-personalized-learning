@@ -8,11 +8,11 @@ import { Toaster } from 'react-hot-toast';
 export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
-      {/* 1. Toaster: Để hiển thị thông báo "Hãy up file lên" từ AssessmentForm */}
+      
       <Toaster position="top-center" />
 
       <div className="container mx-auto px-4">
-        {/* 2. Phần tiêu đề trang (Tối giản để không đè lên tiêu đề trong Form) */}
+        {/* 2. Phần tiêu đề trang */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold text-blue-900 mb-2">
             AI Personalized Learning
