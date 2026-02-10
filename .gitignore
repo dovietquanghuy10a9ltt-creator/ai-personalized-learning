@@ -1,14 +1,16 @@
-**/__pycache__/
-*.pyc
+# --- Backend (Python) ---
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/.env
+backend/chroma_db/
+backend/temp_uploads/
+backend/sql_db/
 
-.venv/
-venv/
-.env
+# --- Frontend (Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/out/
 
-chroma_db/
-data/
-data_uploads/
-
-node_modules/
-.next/
-dist/
