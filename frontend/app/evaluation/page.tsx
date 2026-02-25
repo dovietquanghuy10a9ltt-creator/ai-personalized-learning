@@ -51,10 +51,22 @@ export default function EvaluationPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const userId = localStorage.getItem('user_id') || 2;
+      // --- SỬA LỖI TẠI ĐÂY: Quét đúng biến ID và tuyệt đối KHÔNG gán mặc định số 2 ---
+      const storedId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+      const userId = storedId ? parseInt(storedId, 10) : null;
+
+      // Nếu không tìm thấy ID, ngắt luôn không cho gọi API
+      if (!userId) {
+        console.error("🚨 LỖI: Không tìm thấy ID học sinh! Vui lòng đăng nhập lại.");
+        setHistory([]);
+        setStats({ avg: 0, total: 0, best: 0 });
+        setLoading(false);
+        return; 
+      }
+
       const res = await axios.get(`http://localhost:8000/api/stats/learning-stats`, {
         params: {
-          user_id: userId,
+          user_id: userId, // Lúc này userId chắc chắn là ID của người đang đăng nhập (VD: 3)
           subject: selectedSubject
         }
       });

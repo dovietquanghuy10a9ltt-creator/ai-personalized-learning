@@ -31,15 +31,15 @@ class AssessmentAgent:
             self.db.rollback()
             print(f"Lỗi reset data: {e}")
 
-    def get_or_create_quiz(self, subject: str, num_questions: int = 20, allowed_files: list = None):
+    def get_or_create_quiz(self, subject: str, user_id: int, num_questions: int = 20, allowed_files: list = None):
         """
-        Sinh bài kiểm tra tổng quát phục vụ phân loại năng lực học viên.
+        Sinh bài kiểm tra dựa trên trình độ cá nhân của từng User để tránh lấy nhầm profile người cũ.
         """
         if not allowed_files:
             print("⚠️ CẢNH BÁO: Không có danh sách file được phép cho lớp này.")
             return None
 
-        # --- BƯỚC 1: KIỂM TRA DỮ LIỆU RÁC ---
+        # --- BƯỚC 1: KIỂM TRA DỮ LIỆU RÁC (Toàn đáp án A) ---
         existing_qs = self.db.query(QuestionBank).filter(
             QuestionBank.subject == subject,
             QuestionBank.source_file.in_(allowed_files)
@@ -55,8 +55,9 @@ class AssessmentAgent:
                 ).delete(synchronize_session=False)
                 self.db.commit()
 
-        # --- BƯỚC 2: QUY TRÌNH LẤY ĐỀ TỔNG QUÁT ---
-        profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
+        # --- BƯỚC 2: XÁC ĐỊNH TRÌNH ĐỘ CÁ NHÂN (SỬA LỖI XỌ NGƯỜI NÀY SANG NGƯỜI KIA) ---
+        # Phải lọc theo cả subject VÀ user_id
+        profile = self.db.query(LearnerProfile).filter_by(subject=subject, user_id=user_id).first()
         current_level = profile.current_level if profile else "Beginner"
 
         questions = self.db.query(QuestionBank).filter(
@@ -80,12 +81,6 @@ class AssessmentAgent:
         return questions[:num_questions]
 
     def _generate_batch_safe(self, subject: str, level: str, count: int, allowed_files: list = None):
-        """
-        Sinh câu hỏi dựa trên toàn bộ giáo trình để đánh giá năng lực tổng thể.
-        """
-        print(f"\n--- DEBUG RAG ASSESSMENT ---")
-        print(f"Môn học: {subject} | Số lượng cần tạo: {count}")
-
         try:
             docs = self.vector_store.similarity_search(
                 f"Kiến thức tổng quát môn {subject}", 
@@ -102,79 +97,56 @@ class AssessmentAgent:
                 filtered_docs = docs
 
             if not filtered_docs:
-                print(f"⚠️ Không tìm thấy mảnh kiến thức nào khớp với file của lớp.")
                 return False
 
             random.shuffle(filtered_docs)
             raw_source = filtered_docs[0].metadata.get("source", "")
             primary_source_file = os.path.basename(raw_source) if raw_source else "Unknown"
-            
             context = "\n".join([d.page_content for d in filtered_docs[:5]])
             
-            # --- CẬP NHẬT LẠI PROMPT CHUẨN XÁC: ÉP AI TỰ TRỘN ĐÁP ÁN ---
             prompt = f"""
-            BẠN LÀ CHUYÊN GIA BIÊN SOẠN ĐỀ THI TỔNG QUÁT (ASSESSMENT AGENT).
-            NHIỆM VỤ: Tạo {count} câu hỏi trắc nghiệm môn {subject} để đánh giá trình độ học viên.
-            
-            YÊU CẦU:
-            1. Câu hỏi phải bao quát nhiều khía cạnh kiến thức trong giáo trình.
-            2. Độ khó phù hợp để phân loại học viên thành: Beginner, Intermediate, Advanced.
-            
-            NGỮ CẢNH GIÁO TRÌNH: {context[:4000]}
-            
-            YÊU CẦU ĐỊNH DẠNG JSON CHUẨN XÁC:
+            Tạo {count} câu hỏi trắc nghiệm môn {subject} trình độ {level}.
+            ĐỊNH DẠNG JSON:
             {{
                 "questions": [
                     {{
-                        "question": "Nội dung câu hỏi",
-                        "options": [
-                            "A. Đáp án 1",
-                            "B. Đáp án 2",
-                            "C. Đáp án 3",
-                            "D. Đáp án 4"
-                        ],
+                        "question": "Nội dung",
+                        "options": ["A. ", "B. ", "C. ", "D. "],
                         "correct_answer": "B",
-                        "explanation": "Giải thích chi tiết tại sao B lại đúng dựa trên giáo trình."
+                        "explanation": "..."
                     }}
                 ]
             }}
-            QUY TẮC CỐT LÕI (BẮT BUỘC TUÂN THỦ):
-            - Mảng 'options' PHẢI có đúng 4 phần tử. BẮT BUỘC phải bắt đầu bằng chữ "A. ", "B. ", "C. ", "D. " theo đúng thứ tự.
-            - BẠN PHẢI TỰ XÁO TRỘN ĐÁP ÁN ĐÚNG NGẪU NHIÊN VÀO MỘT TRONG 4 VỊ TRÍ NÀY. Không được luôn đặt đáp án đúng ở vị trí A.
-            - Trường 'correct_answer' CHỈ ĐƯỢC ĐIỀN ĐÚNG 1 CHỮ CÁI DUY NHẤT (A, B, C hoặc D) tương ứng với đáp án đúng. Tuyệt đối không viết thêm bất cứ ký tự nào khác.
+            YÊU CẦU: Xáo trộn đáp án đúng ngẫu nhiên. correct_answer chỉ gồm 1 chữ cái.
             """
 
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You output strict JSON. You must randomize the correct answer position. 'correct_answer' MUST be a single letter: A, B, C, or D."},
+                    {"role": "system", "content": "JSON output. Randomize answer positions."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
-                temperature=0.3, # Nhiệt độ thấp để nó ngoan ngoãn làm theo format
+                temperature=0.3,
                 response_format={"type": "json_object"}
             )
             
             data = json.loads(chat_completion.choices[0].message.content)
-            questions_list = data.get("questions", data.get("question_bank", []))
+            questions_list = data.get("questions", [])
 
             inserted_count = 0
             for item in questions_list:
-                q_text = item.get('question') or item.get('content') or item.get('text')
-                raw_options = item.get('options') or item.get('choices') or []
+                q_text = item.get('question')
+                raw_options = item.get('options', [])
                 correct_ans = str(item.get('correct_answer', 'A')).strip().upper()
                 
-                if not q_text or len(raw_options) < 4: 
-                    continue 
+                if not q_text or len(raw_options) < 4: continue 
 
-                # Bóc đúng chữ cái A,B,C,D từ correct_answer của AI
                 match = re.search(r'([A-D])', correct_ans)
                 final_key = match.group(1) if match else "A"
 
-                # Chuẩn hóa lại mảng options để đảm bảo luôn là định dạng "A. Text", "B. Text"...
                 labels = ["A", "B", "C", "D"]
                 final_options = []
                 for i in range(4):
-                    # Xóa chữ A. B. cũ đi (nếu có) rồi gắn lại cho đồng bộ
                     clean_text = re.sub(r'^[A-D][\.\:\-\)]\s*', '', str(raw_options[i])).strip()
                     final_options.append(f"{labels[i]}. {clean_text}")
 
@@ -184,7 +156,7 @@ class AssessmentAgent:
                         difficulty=level, 
                         content=q_text.strip(),
                         options=final_options, 
-                        correct_answer=final_key, # LƯU TRỰC TIẾP CHỮ A, B, C HOẶC D VÀO ĐÂY!
+                        correct_answer=final_key,
                         explanation=item.get('explanation', ""),
                         is_used=False,
                         source_file=primary_source_file
@@ -193,65 +165,51 @@ class AssessmentAgent:
                     inserted_count += 1
 
             self.db.commit()
-            print(f"✅ Đã lưu thành công {inserted_count} câu hỏi tổng quát cho môn: {subject}")
             return True
         except Exception as e:
-            print(f"❌ Lỗi AssessmentAgent: {e}")
             self.db.rollback()
             return False
 
-    # --- HÀM MỚI THÊM VÀO ĐỂ LƯU KẾT QUẢ ---
     def submit_assessment(self, user_id: int, subject: str, user_answers: list):
         """
-        Tính điểm và phân loại trình độ học viên sau khi nộp bài test.
+        Tính điểm và cập nhật trình độ. Đảm bảo cách ly dữ liệu User và Subject tuyệt đối.
         """
         try:
             score = 0
             total_questions = len(user_answers)
-            
-            if total_questions == 0:
-                return None
+            if total_questions == 0: return None
 
-            # 1. Tính số câu đúng
+            # 1. Tính số câu đúng (LỌC CHÍNH XÁC MÔN HỌC ĐỂ TRÁNH TRÙNG ID CÂU HỎI MÔN KHÁC)
             for ans in user_answers:
                 q_id = ans.get("question_id")
                 selected = ans.get("selected_option")
                 
-                question = self.db.query(QuestionBank).filter_by(id=q_id).first()
+                question = self.db.query(QuestionBank).filter_by(id=q_id, subject=subject).first()
                 if question and question.correct_answer == selected:
                     score += 1
 
-            # 2. Tính phần trăm và quyết định Level
+            # 2. Phân loại trình độ
             percentage = (score / total_questions) * 100
-            
-            if percentage >= 80:
-                level = "Advanced"
-            elif percentage >= 50:
-                level = "Intermediate"
-            else:
-                level = "Beginner"
+            level = "Advanced" if percentage >= 80 else "Intermediate" if percentage >= 50 else "Beginner"
 
-            # 3. Lưu vào Database (Bảng LearnerProfile)
+            # 3. Cập nhật LearnerProfile (LỌC CHÍNH XÁC USER_ID VÀ SUBJECT)
             profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
             if profile:
                 profile.current_level = level
-                # Nếu model LearnerProfile có cột score, bạn có thể bỏ comment dòng dưới:
-                # profile.score = percentage 
             else:
                 profile = LearnerProfile(
                     user_id=user_id,
                     subject=subject,
-                    current_level=level
+                    current_level=level,
+                    total_tests=0,
+                    avg_score=0.0
                 )
                 self.db.add(profile)
 
             self.db.commit()
-            print(f"✅ Đã chấm và lưu điểm cho User {user_id}: {percentage}% - Trình độ: {level}")
-            
-            # Trả về kết quả để API gọi tiếp hàm sinh lộ trình
+            print(f"✅ User {user_id} - Môn {subject}: {percentage}% ({level})")
             return {"score": percentage, "level": level}
 
         except Exception as e:
             self.db.rollback()
-            print(f"❌ Lỗi khi lưu kết quả bài test: {e}")
             return None

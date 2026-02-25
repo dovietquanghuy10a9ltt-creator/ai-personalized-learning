@@ -37,8 +37,10 @@ const AssessmentForm = () => {
   const [reviewMode, setReviewMode] = useState(false); 
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // LẤY ID CHUẨN XÁC
   const getUserId = () => {
-    const id = localStorage.getItem("userId");
+    if (typeof window === "undefined") return null;
+    const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
     return id ? parseInt(id) : null;
   };
 
@@ -54,28 +56,44 @@ const AssessmentForm = () => {
     }
   };
 
+  // --- FIX TRIỆT ĐỂ 1: BUỘC RESET KHI ĐỔI HỌC SINH ---
   useEffect(() => {
+    const currentUserId = getUserId();
     const savedData = localStorage.getItem(STORAGE_KEY);
+    
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
-        if (parsed.step === 'quiz' && parsed.questions && parsed.questions.length > 0) {
+        // Nếu ID trong bản lưu KHÁC ID đang đăng nhập -> XÓA SẠCH LUÔN
+        if (parsed.userId !== currentUserId) {
+          localStorage.removeItem(STORAGE_KEY);
+          setAnswers({});
+          setTimer(0);
+        } else if (parsed.step === 'quiz' && parsed.questions?.length > 0) {
           setSubject(parsed.subject);
           setQuestions(parsed.questions);
           setAnswers(parsed.answers || {});
           setTimer(parsed.timer || 0);
           setStep('quiz');
-          toast.success("Đã khôi phục bài làm của bạn!", { icon: '🔄', duration: 3000 });
+          toast.success("Đã khôi phục bài làm của bạn!");
         }
-      } catch (error) {
+      } catch (e) {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
   }, []);
 
+  // --- FIX TRIỆT ĐỂ 2: LƯU TRẠNG THÁI KÈM USER_ID ---
   useEffect(() => {
     if (step === 'quiz' && questions.length > 0) {
-      const dataToSave = { step: 'quiz', subject, questions, answers, timer };
+      const dataToSave = { 
+        step: 'quiz', 
+        subject, 
+        questions, 
+        answers, 
+        timer, 
+        userId: getUserId() // Cực kỳ quan trọng
+      };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     }
   }, [step, subject, questions, answers, timer]);
@@ -98,7 +116,7 @@ const AssessmentForm = () => {
 
       window.history.pushState(null, "", window.location.href);
       const handlePopState = () => {
-        if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi. Nếu thoát, bài làm sẽ bị xóa.\n\nBạn có chắc chắn muốn thoát?")) {
+        if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi. Nếu thoát, bài làm sẽ bị xóa.")) {
           localStorage.removeItem(STORAGE_KEY);
           setStep('select_subject');
         } else {
@@ -114,7 +132,7 @@ const AssessmentForm = () => {
     }
   }, [step]);
 
-  const cleanOptionText = (text: string) => text.replace(/^[A-D]\.\s*/, "").trim();
+  const cleanOptionText = (text: string) => text.replace(/^[A-D][\.\:\-\)]\s*/, "").trim();
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -123,7 +141,7 @@ const AssessmentForm = () => {
 
   const handleSafeExit = () => {
     if (Object.keys(answers).length > 0) {
-      if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi.\nNếu thoát bây giờ, kết quả sẽ bị xóa và không thể khôi phục.\n\nBạn có chắc chắn muốn thoát?")) {
+      if (window.confirm("⚠️ Thoát bây giờ bài làm sẽ bị xóa. Xác nhận thoát?")) {
         localStorage.removeItem(STORAGE_KEY);
         setStep('select_subject');
         setAnswers({});
@@ -158,11 +176,11 @@ const AssessmentForm = () => {
         setQuestions(res.data.questions);
         setStep('quiz');
         toast.dismiss();
-        toast.success(`Khởi tạo bài kiểm tra môn ${selectedSub}`, { duration: 3000 });
+        toast.success(`Khởi tạo bài kiểm tra môn ${selectedSub}`);
       }
     } catch (error: any) {
       const errMsg = error.response?.data?.detail || "Chưa có tài liệu môn này.";
-      toast.error(errMsg, { duration: 4000 });
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -188,8 +206,7 @@ const AssessmentForm = () => {
       await fetchRoadmap(subject); 
       setStep('result');
       localStorage.removeItem(STORAGE_KEY);
-      toast.dismiss();
-      toast.success("Nộp bài thành công!", { duration: 3000 });
+      toast.success("Nộp bài thành công!");
     } catch (error) {
       toast.error("Lỗi khi nộp bài.");
     } finally {
@@ -200,7 +217,7 @@ const AssessmentForm = () => {
   const handleCheckAndSubmit = () => {
     const missingIndexes = questions.map((q, idx) => (answers[q.id] ? null : idx + 1)).filter((idx) => idx !== null);
     if (missingIndexes.length > 0) {
-      toast.error(`🛑 Bạn chưa làm các câu: ${missingIndexes.join(", ")}\nVui lòng hoàn thành trước khi nộp!`, { duration: 4000, icon: '⚠️' });
+      toast.error(`🛑 Bạn chưa làm câu: ${missingIndexes.join(", ")}`);
       return; 
     }
     if (window.confirm("✅ Xác nhận nộp bài?")) handleSubmit();
@@ -208,19 +225,15 @@ const AssessmentForm = () => {
 
   const currentQ = questions[currentIndex];
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
-
-  // LẤY CỜ BÁO ĐỎ TỪ BACKEND TRẢ VỀ HOẶC TỰ ĐÁNH GIÁ NẾU KHÔNG CÓ
   const isPassed = resultData?.is_passed !== false;
-  
-  // FIX LỖI NaN%
   const progressVal = Number(roadmap?.progress_percent);
   const displayProgress = isNaN(progressVal) ? 0 : Math.round(progressVal);
 
+  // --- FIX TRIỆT ĐỂ 3: DÙNG KEY ĐỂ RESET COMPONENT KHI ĐỔI NGƯỜI ---
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 font-sans">
+    <div key={getUserId()} className="min-h-screen bg-gray-50 py-10 px-4 font-sans">
       <Toaster position="top-center" reverseOrder={false} />
 
-      {/* 1. CHỌN MÔN */}
       {step === 'select_subject' && (
         <div className="max-w-5xl mx-auto p-4 text-center">
           <h2 className="text-2xl font-black text-gray-800 mb-8 uppercase tracking-tighter">Hệ thống học tập thích ứng</h2>
@@ -245,7 +258,6 @@ const AssessmentForm = () => {
         </div>
       )}
 
-      {/* 2. KẾT QUẢ & LỘ TRÌNH CHI TIẾT */}
       {step === 'result' && resultData && !reviewMode && (
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-300">
@@ -260,7 +272,6 @@ const AssessmentForm = () => {
                   </div>
                 </div>
                 <div className="text-center">
-                  {/* BÁO ĐỎ ĐIỂM SỐ NẾU THI TRƯỢT */}
                   <div className={`text-5xl font-black ${isPassed ? 'text-indigo-600' : 'text-red-600'}`}>
                     {Math.round(resultData.score)}%
                   </div>
@@ -271,7 +282,6 @@ const AssessmentForm = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* BÁO ĐỎ KHUNG THÔNG BÁO NẾU THI TRƯỢT */}
                 <div className={`p-6 rounded-2xl border relative ${isPassed ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-200'}`}>
                   <div className="absolute top-4 right-4 text-2xl opacity-20">{isPassed ? '🤖' : '🚨'}</div>
                   <h3 className={`text-xs font-black uppercase mb-3 ${isPassed ? 'text-amber-600' : 'text-red-600'}`}>
@@ -286,7 +296,6 @@ const AssessmentForm = () => {
                   <div className="grid grid-cols-3 gap-3">
                       <div className="bg-gray-50 p-3 rounded-xl text-center">
                           <p className="text-[9px] text-gray-400 font-black uppercase">Đúng</p>
-                          {/* ĐỔI MÀU NẾU TRƯỢT */}
                           <p className={`text-lg font-black ${isPassed ? 'text-emerald-600' : 'text-red-500'}`}>{resultData.correct_count}/{resultData.total_questions}</p>
                       </div>
                       <div className="bg-gray-50 p-3 rounded-xl text-center">
@@ -306,7 +315,6 @@ const AssessmentForm = () => {
             </div>
           </div>
 
-          {/* DASHBOARD LỘ TRÌNH 10 BUỔI */}
           {roadmap && (
             <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-5 duration-700">
               <div className="flex items-center justify-between mb-10">
@@ -314,7 +322,6 @@ const AssessmentForm = () => {
                   <h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter flex items-center gap-3">
                     🚀 Lộ trình học tập cá nhân hóa
                   </h3>
-                  {/* FIX DẤU > THÀNH KÝ TỰ MÃ HÓA */}
                   <p className="text-xs text-gray-400 font-medium mt-1">Vượt qua bài kiểm tra (&gt;60%) để mở khóa bài tiếp theo</p>
                 </div>
                 <div className="px-4 py-2 bg-indigo-50 rounded-2xl border border-indigo-100 text-indigo-600 text-[10px] font-black uppercase">
@@ -324,11 +331,9 @@ const AssessmentForm = () => {
 
               <div className="relative space-y-6">
                 <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-gray-100 hidden sm:block"></div>
-
                 {roadmap.roadmap_data?.map((item: any, idx: number) => {
                   const isCurrent = item.session === roadmap.current_session;
                   const isDone = item.session < roadmap.current_session;
-
                   return (
                     <div key={idx} className={`relative flex items-start gap-6 transition-all ${!isCurrent && !isDone ? "opacity-40" : "opacity-100"}`}>
                       <div className={`relative z-10 w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-sm shadow-lg transition-transform ${
@@ -337,7 +342,6 @@ const AssessmentForm = () => {
                       }`}>
                         {isDone ? "✓" : item.session}
                       </div>
-
                       <div className={`flex-1 p-6 rounded-3xl border transition-all ${
                         isCurrent ? "bg-indigo-50 border-indigo-200 shadow-sm" : "bg-white border-gray-100"
                       }`}>
@@ -346,21 +350,10 @@ const AssessmentForm = () => {
                           {isCurrent && <span className="bg-indigo-600 text-[8px] text-white px-2 py-1 rounded-md font-black animate-pulse">ĐANG HỌC</span>}
                         </div>
                         <p className="text-[11px] text-gray-500 font-medium leading-relaxed mb-4">{item.description}</p>
-                        
                         {isCurrent && (
                           <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-indigo-100/50">
-                            <button 
-                              onClick={() => toast.success(`Chuyển sang Gia sư AI: ${item.topic}`)}
-                              className="px-4 py-2 bg-gray-900 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-black transition-all shadow-md"
-                            >
-                              💬 Học với Gia sư AI
-                            </button>
-                            <button 
-                              onClick={() => { toast.success("Đang tạo bài kiểm tra chốt chặn..."); handleSelectSubject(subject); }}
-                              className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all"
-                            >
-                              📝 Test để qua bài
-                            </button>
+                            <button onClick={() => toast.success(`Chuyển sang Gia sư AI: ${item.topic}`)} className="px-4 py-2 bg-gray-900 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-black transition-all shadow-md">💬 Học với Gia sư AI</button>
+                            <button onClick={() => handleSelectSubject(subject)} className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all">📝 Test để qua bài</button>
                           </div>
                         )}
                       </div>
@@ -373,7 +366,6 @@ const AssessmentForm = () => {
         </div>
       )}
 
-      {/* 3. QUIZ & REVIEW MODE */}
       {((step === 'quiz') || (step === 'result' && reviewMode)) && currentQ && (
         <div className="flex items-center justify-center min-h-[60vh] py-8">
           <div className="w-full max-w-3xl bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden flex flex-col transition-all duration-300">
@@ -419,21 +411,18 @@ const AssessmentForm = () => {
                       }
                       
                       if (reviewMode) {
-                          // LẤY ĐÚNG ĐÁP ÁN TỪ HÀM REGEX BACKEND TRẢ VỀ
                           const resultItem = resultData?.results?.find((r: any) => r.question_id === currentQ.id);
                           const correctLabel = resultItem?.correct_label?.trim().toUpperCase();
                           const isCorrect = correctLabel === label;
-                          
                           cStyle = "border-gray-100 opacity-50 cursor-default"; 
-                          
                           if (isCorrect) {
-                             cStyle = "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500 opacity-100 shadow-md";
-                             bStyle = "bg-emerald-500 text-white";
-                             tStyle = "text-emerald-900 font-bold";
+                              cStyle = "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500 opacity-100 shadow-md";
+                              bStyle = "bg-emerald-500 text-white";
+                              tStyle = "text-emerald-900 font-bold";
                           } else if (isSelected) {
-                             cStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100 shadow-md";
-                             bStyle = "bg-red-500 text-white";
-                             tStyle = "text-red-900 font-bold";
+                              cStyle = "border-red-500 bg-red-50 ring-1 ring-red-500 opacity-100 shadow-md";
+                              bStyle = "bg-red-500 text-white";
+                              tStyle = "text-red-900 font-bold";
                           }
                       }
                       

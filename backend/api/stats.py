@@ -1,5 +1,5 @@
 # backend/api/stats.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from typing import Optional
@@ -14,28 +14,40 @@ async def get_stats(
     subject: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    if user_id is None or user_id == 0:
-        first_p = db.query(LearnerProfile).first()
-        user_id = first_p.user_id if first_p else 1
+    # 1. BẢO VỆ TẦNG 1: Bắt buộc có user_id
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Thiếu user_id. Vui lòng đăng nhập lại.")
 
-    query = db.query(AssessmentHistory).filter(AssessmentHistory.user_id == user_id)
-    if subject and subject != "Tất cả" and subject != "undefined":
-        query = query.filter(AssessmentHistory.subject == subject)
+    # 2. BẢO VỆ TẦNG 2: Xử lý chuỗi môn học (Tránh lỗi do thừa dấu cách từ Frontend)
+    clean_subject = subject.strip() if subject else None
+    is_global_stats = not clean_subject or clean_subject in ["Tất cả", "undefined", "null", ""]
+
+    # 3. TẠO BỘ LỌC CỐT LÕI VÀ NGHIÊM NGẶT NHẤT
+    base_filter = [AssessmentHistory.user_id == user_id]
     
-    histories = query.order_by(AssessmentHistory.timestamp.asc()).all()
+    # Nếu không phải xem "Tất cả", ÉP BUỘC phải khớp chính xác tên môn học
+    if not is_global_stats:
+        base_filter.append(AssessmentHistory.subject == clean_subject)
 
-    # Tính toán Overview
-    total_tests = len(histories)
-    best_score_raw = db.query(func.max(AssessmentHistory.score)).filter(AssessmentHistory.user_id == user_id).scalar()
-    avg_score_raw = db.query(func.avg(AssessmentHistory.score)).filter(AssessmentHistory.user_id == user_id).scalar()
+    # 4. Thực thi truy vấn với bộ lọc đã khóa chặt
+    query = db.query(AssessmentHistory).filter(*base_filter)
+    histories_for_chart = query.order_by(AssessmentHistory.timestamp.asc()).all()
 
-    # Lấy danh sách chi tiết và tính toán Trend (Tiến bộ)
+    # 5. TÍNH TOÁN THỐNG KÊ (Chỉ tính trên đúng Môn và đúng User đó)
+    total_tests = query.count()
+    
+    best_score_raw = db.query(func.max(AssessmentHistory.score))\
+        .filter(*base_filter).scalar()
+        
+    avg_score_raw = db.query(func.avg(AssessmentHistory.score))\
+        .filter(*base_filter).scalar()
+
+    # 6. Lấy 10 bài gần nhất của ĐÚNG MÔN ĐÓ
     detailed_histories = query.order_by(desc(AssessmentHistory.timestamp)).limit(10).all()
     history_list = []
     
     for i, h in enumerate(detailed_histories):
         trend = 0
-        # Tính khoảng chênh lệch điểm so với bài kiểm tra trước đó (older_h nằm ở i+1 do đang xếp giảm dần)
         if i + 1 < len(detailed_histories):
             older_h = detailed_histories[i+1]
             trend = h.score - older_h.score
@@ -43,15 +55,15 @@ async def get_stats(
         history_list.append({
             "id": h.id,
             "subject": h.subject,
-            "score": round(float(h.score), 1),
-            "date": h.timestamp.isoformat(), # Trả về chuẩn ISO để Frontend hiểu múi giờ
-            "duration": h.duration_seconds if h.duration_seconds else 0, # Lấy số giây làm bài
-            "level": h.level_at_time if h.level_at_time else "Beginner", # Lấy cấp độ
-            "trend": round(float(trend), 1), # Tính tiến bộ
+            "score": round(float(h.score or 0), 1),
+            "date": h.timestamp.isoformat(),
+            "duration": h.duration_seconds if h.duration_seconds else 0,
+            "level": h.level_at_time if h.level_at_time else "Beginner",
+            "trend": round(float(trend), 1),
             "correct": h.correct_count
         })
 
-    # TRẢ VỀ JSON PHẲNG
+    # 7. TRẢ VỀ KẾT QUẢ SẠCH
     return {
         "total_tests": total_tests,
         "totalTests": total_tests,
@@ -60,8 +72,8 @@ async def get_stats(
         "best_score": round(float(best_score_raw or 0), 1),
         "bestScore": round(float(best_score_raw or 0), 1),
         "chart_data": [
-            {"date": h.timestamp.strftime("%d/%m"), "score": round(float(h.score), 1)} 
-            for h in histories
+            {"date": h.timestamp.strftime("%d/%m"), "score": round(float(h.score or 0), 1)} 
+            for h in histories_for_chart
         ],
         "history_list": history_list
     }
