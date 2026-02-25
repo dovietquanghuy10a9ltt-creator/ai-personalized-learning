@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import { Toaster } from "react-hot-toast"; // Import Toaster dùng chung
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -13,11 +14,30 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
-      <body className={`${inter.className} bg-slate-50 min-h-screen text-slate-900`}>
+      <body className={`${inter.className} bg-slate-50 min-h-screen text-slate-900 flex flex-col`}>
+        {/* Thanh điều hướng thông minh */}
         <Navbar />
-        <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        {/* Thả tự do chiều rộng để các trang (Auth, Landing) có thể bung Full màn hình */}
+        <main className="flex-1 w-full flex flex-col">
           {children}
         </main>
+
+        {/* Thông báo Global: Đặt ở đây thì mọi trang đều gọi được toast.success() */}
+        <Toaster 
+          position="top-center" 
+          reverseOrder={false} 
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#333',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              borderRadius: '10px'
+            }
+          }}
+        />
       </body>
     </html>
   );
