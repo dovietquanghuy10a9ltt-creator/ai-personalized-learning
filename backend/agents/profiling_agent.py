@@ -19,20 +19,17 @@ class ProfilingAgent:
         self.client = Groq(api_key=self.api_key)
         self.model = "llama-3.1-8b-instant"
 
-    def classify_learner(self, correct_count: int, total_questions: int, subject: str):
+    def classify_learner(self, correct_count: int, total_questions: int, subject: str, user_id: int):
         """
-        Phân loại năng lực học viên dựa trên kết quả hiện tại và lịch sử học tập.
+        Đánh giá và phân loại năng lực học viên dựa trên kết quả bài test đầu vào.
+        Áp dụng luật: < 40% Beginner, 40-70% Intermediate, > 70% Advanced.
         """
         if total_questions == 0:
             return "Beginner"
 
         score_percent = (correct_count / total_questions) * 100
         
-        # 1. LẤY HỒ SƠ QUÁ KHỨ (Tương tác với DB)
-        profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
-        avg_score = profile.avg_score if profile else score_percent
-        
-        # 2. PHÂN LOẠI CƠ BẢN (Rule-based)
+        # 1. PHÂN LOẠI DỰA TRÊN LUẬT CỨNG (Rule-based)
         if score_percent < 40:
             base_level = "Beginner"
         elif 40 <= score_percent <= 70:
@@ -40,32 +37,43 @@ class ProfilingAgent:
         else:
             base_level = "Advanced"
 
-        # 3. GỌI AI ĐỂ TINH CHỈNH PHÂN LOẠI (Hệ thống đa tác tử)
-        # AI sẽ xem xét liệu điểm bài này có phản ánh đúng thực lực (avg_score) hay không
+        # 2. LẤY HỒ SƠ ĐỂ KIỂM TRA XU HƯỚNG (Nếu đã có lịch sử)
+        profile = self.db.query(LearnerProfile).filter_by(subject=subject, user_id=user_id).first()
+        avg_score = profile.avg_score if profile else score_percent
+        
+        # 3. GỌI AI ĐỂ TINH CHỈNH VÀ XÁC NHẬN TRÌNH ĐỘ
+        # Điều này giúp hệ thống xác định mức độ phù hợp để đưa vào lộ trình học tổng thể.
         refined_level = self._get_ai_refined_level(subject, score_percent, avg_score, base_level)
         
         return refined_level
 
     def _get_ai_refined_level(self, subject, current_score, avg_score, base_level):
         """
-        AI phân tích xu hướng năng lực để tránh việc xếp loại sai do một bài thi may mắn/xui xẻo.
+        AI phân tích để đưa ra mức độ phân loại phù hợp nhất cho lộ trình học.
         """
         prompt = f"""
-        Bạn là Chuyên gia Phân tích Năng lực (Profiling Agent). 
-        Hãy xác định trình độ học viên môn {subject} dựa trên:
-        - Điểm bài hiện tại: {current_score}%
-        - Điểm trung bình lịch sử: {avg_score}%
-        - Xếp loại sơ bộ: {base_level}
+        Bạn là Chuyên gia Phân tích Năng lực (Learner Profiling Agent). 
+        Hãy xác định trình độ học viên môn {subject} để thiết lập lộ trình học tổng thể.
+        
+        Dữ liệu:
+        - Điểm bài test đầu vào: {current_score}%
+        - Điểm trung bình tích lũy: {avg_score}%
+        - Xếp loại theo luật: {base_level}
 
-        QUY TẮC:
-        - Nếu điểm hiện tại cao đột biến so với trung bình, hãy giữ mức {base_level} nhưng ghi chú là 'Potential'.
-        - Nếu điểm thấp đột biến, đừng hạ cấp học viên ngay.
-        - Trả về JSON: {{ "final_level": "Beginner/Intermediate/Advanced", "confidence": "High/Low" }}
+        QUY TẮC PHÂN LOẠI:
+        - < 40%: Beginner
+        - 40% - 70%: Intermediate
+        - > 70%: Advanced
+
+        YÊU CẦU:
+        Xác nhận trình độ cuối cùng để Adaptive Agent sinh các buổi học (Sessions) phù hợp.
+        Trả về JSON: {{ "final_level": "Beginner/Intermediate/Advanced", "analysis": "Lý do ngắn gọn" }}
         """
 
         try:
             chat_completion = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": "You are a precise educational Profiling Agent."},
+                          {"role": "user", "content": prompt}],
                 model=self.model,
                 response_format={"type": "json_object"}
             )

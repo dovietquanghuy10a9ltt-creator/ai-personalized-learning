@@ -6,9 +6,11 @@ from db import models
 from db.database import engine
 
 # --- IMPORT CÁC ROUTER API ---
-from api import assessment, upload, adaptive, stats 
+# Đã thêm 'classroom' vào danh sách import
+from api import assessment, upload, adaptive, stats, auth, classroom 
 
-# Tự động tạo bảng nếu chưa có
+# Tự động tạo bảng nếu chưa có 
+# (Sẽ tạo thêm bảng 'users', 'classrooms', và cập nhật 'documents' từ models mới)
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Personalized Learning API")
@@ -24,16 +26,23 @@ app.add_middleware(
 
 # --- ĐĂNG KÝ ROUTER ---
 
-# 1. Assessment
+# 0. Authentication (Xử lý Đăng nhập/Đăng ký)
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+
+# 1. Classroom (Xử lý Tạo lớp, Tham gia lớp, Lấy danh sách lớp)
+# Đây là router giúp giải quyết lỗi khi bạn nhấn nút "Tạo lớp" ở Frontend
+app.include_router(classroom.router, prefix="/api/classroom", tags=["Classroom"])
+
+# 2. Assessment
 app.include_router(assessment.router, prefix="/api/assessment", tags=["Assessment"])
 
-# 2. Upload
+# 3. Upload (Quản lý tài liệu theo lớp)
 app.include_router(upload.router, prefix="/api/upload", tags=["Upload"])
 
-# 3. Adaptive
+# 4. Adaptive (Gia sư AI cá nhân hóa theo tài liệu lớp)
 app.include_router(adaptive.router, prefix="/api/adaptive", tags=["AI Tutor"])
 
-# 4. Stats
+# 5. Stats
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 
 @app.get("/")

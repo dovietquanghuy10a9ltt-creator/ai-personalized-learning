@@ -12,21 +12,25 @@ const SUBJECTS = [
   "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
 ];
 
-export default function FileUploader() {
+// Cập nhật Interface nhận classId và teacherId
+interface FileUploaderProps {
+  onUploadSuccess?: () => void;
+  teacherId: string | null;
+  classId: number | null;
+}
+
+export default function FileUploader({ onUploadSuccess, teacherId, classId }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle');
   const [selectedSubject, setSelectedSubject] = useState("");
-  
   const [isDragActive, setIsDragActive] = useState(false);
 
-  // --- HÀM XỬ LÝ CHUNG: GỌI KHI CÓ FILE (TỪ CLICK HOẶC DROP) ---
   const processFile = async (selectedFile: File) => {
     if (!selectedFile) return;
 
-    // Kiểm tra nhanh đuôi file (Optional)
     const validTypes = ['.pdf', '.docx', '.txt', '.pptx'];
     const fileExt = "." + selectedFile.name.split('.').pop()?.toLowerCase();
     if (!validTypes.includes(fileExt)) {
@@ -55,13 +59,11 @@ export default function FileUploader() {
     }
   };
 
-  // 1. SỰ KIỆN CLICK CHỌN FILE
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) processFile(selectedFile);
   };
 
-  // 2.CÁC SỰ KIỆN KÉO THẢ (DRAG & DROP)
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -81,13 +83,18 @@ export default function FileUploader() {
 
     const droppedFiles = e.dataTransfer.files;
     if (droppedFiles && droppedFiles.length > 0) {
-      processFile(droppedFiles[0]); // Xử lý file đầu tiên được thả vào
+      processFile(droppedFiles[0]);
     }
   }, []);
 
-  // 3. NÚT XÁC NHẬN NẠP
   const handleConfirmUpload = async () => {
     if (!file || !selectedSubject) return;
+    
+    // Kiểm tra classId trước khi upload
+    if (!classId) {
+        toast.error("Lỗi: Vui lòng chọn một lớp học trước khi nạp tài liệu!");
+        return;
+    }
 
     setIsUploading(true);
     setProcessingStage('uploading');
@@ -96,6 +103,10 @@ export default function FileUploader() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("manual_subject", selectedSubject);
+    
+    // GỬI KÈM ID GIÁO VIÊN VÀ ID LỚP HỌC
+    if (teacherId) formData.append("teacher_id", teacherId);
+    formData.append("class_id", classId.toString());
 
     try {
       await axios.post("http://localhost:8000/api/upload/upload", formData, {
@@ -107,10 +118,16 @@ export default function FileUploader() {
           if (percent >= 100) setProcessingStage('processing');
         },
       });
+      
       setProcessingStage('done');
-      toast.success("Nạp tri thức thành công!");
+      toast.success("Đã nạp tri thức riêng cho lớp học này!");
+
+      if (onUploadSuccess) {
+        onUploadSuccess();
+      }
+
     } catch (error) {
-      toast.error("Lỗi upload.");
+      toast.error("Lỗi upload tài liệu vào lớp học.");
       setProcessingStage('idle');
     } finally {
       setIsUploading(false);
@@ -126,8 +143,6 @@ export default function FileUploader() {
 
   return (
     <div className="p-0">
-      
-      {/* --- TRẠNG THÁI 1: CHƯA CHỌN FILE --- */}
       {!file ? (
         <label 
           onDragOver={handleDragOver}
@@ -135,28 +150,25 @@ export default function FileUploader() {
           onDrop={handleDrop}
           className={`flex flex-col items-center justify-center w-full h-44 border border-dashed rounded-lg cursor-pointer transition-all bg-white group
             ${isDragActive 
-              ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' // Hiệu ứng khi kéo file vào
+              ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' 
               : 'border-slate-300 hover:bg-slate-50 hover:border-indigo-500'
             }`}
         >
-          <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none"> {/* pointer-events-none để tránh conflict sự kiện con */}
+          <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
             <div className={`p-3 border rounded-full mb-3 shadow-sm transition-transform
-               ${isDragActive ? 'bg-white border-indigo-200 scale-110' : 'bg-white border-slate-100 group-hover:scale-110'}`}>
-                <UploadCloud className={`w-5 h-5 ${isDragActive ? 'text-indigo-600' : 'text-indigo-600'}`} />
+                ${isDragActive ? 'bg-white border-indigo-200 scale-110' : 'bg-white border-slate-100 group-hover:scale-110'}`}>
+                <UploadCloud className={`w-5 h-5 text-indigo-600`} />
             </div>
             <p className="text-sm text-slate-600 font-medium">
               <span className="font-bold text-indigo-600">Click</span> hoặc kéo thả tài liệu
             </p>
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">PDF, DOCX, PPTX (Max 20MB)</p>
+            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">LỚP ID: {classId || "Chưa chọn"}</p>
           </div>
           <input type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx,.txt,.pptx" />
         </label>
       ) : (
-        
-        // --- TRẠNG THÁI 2: ĐÃ CHỌN FILE ---
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            
-            {/* 1. Header hiển thị tên file */}
+            {/* ... Phần hiển thị file đang nạp giữ nguyên ... */}
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white border border-slate-200 rounded flex items-center justify-center shrink-0">
@@ -164,7 +176,7 @@ export default function FileUploader() {
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{file.name}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Lớp ID: {classId}</p>
                     </div>
                 </div>
                 {!isUploading && processingStage !== 'done' && (
@@ -174,10 +186,7 @@ export default function FileUploader() {
                 )}
             </div>
 
-            {/* 2. Body Form */}
             <div className="p-4 space-y-4">
-                
-                {/* A. Phần chọn môn học */}
                 {isAnalyzing ? (
                     <div className="py-2 flex items-center gap-2 text-indigo-600">
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -196,7 +205,7 @@ export default function FileUploader() {
                                 value={selectedSubject}
                                 onChange={(e) => setSelectedSubject(e.target.value)}
                                 disabled={isUploading}
-                                className="w-full p-2.5 pl-3 pr-8 bg-white border border-slate-300 rounded-md text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none appearance-none transition-all cursor-pointer hover:border-slate-400"
+                                className="w-full p-2.5 pl-3 pr-8 bg-white border border-slate-300 rounded-md text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all cursor-pointer hover:border-slate-400"
                             >
                                 <option value="" disabled>-- Chọn môn học --</option>
                                 {SUBJECTS.map(sub => (
@@ -212,38 +221,33 @@ export default function FileUploader() {
                         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                         <div>
                             <p className="text-xs font-bold text-emerald-700 uppercase">Lưu trữ thành công</p>
-                            <p className="text-[10px] text-emerald-600">Môn: {selectedSubject}</p>
+                            <p className="text-[10px] text-emerald-600">Tài liệu đã được gắn vào lớp học.</p>
                         </div>
                     </div>
                 )}
 
-                {/* B. Thanh tiến độ */}
                 {isUploading && (
                     <div className="space-y-1.5 pt-2">
                         <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
                             <span>{processingStage === 'uploading' ? "Uploading..." : "Processing..."}</span>
                             <span>{uploadProgress}%</span>
                         </div>
-                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden relative">
                             <div 
-                                className="h-full bg-indigo-600 rounded-full transition-all duration-200 ease-out" 
+                                className="h-full bg-indigo-600 rounded-full transition-all duration-200" 
                                 style={{ width: `${uploadProgress}%` }}
                             ></div>
-                            {processingStage === 'processing' && (
-                                <div className="absolute inset-0 w-full h-full bg-white/30 animate-[shimmer_1s_infinite]"></div>
-                            )}
                         </div>
                     </div>
                 )}
 
-                {/* 3. Nút bấm Action */}
                 {!isUploading && processingStage !== 'done' && (
                     <button 
                         onClick={handleConfirmUpload}
                         disabled={isAnalyzing || !selectedSubject}
-                        className="w-full py-2.5 bg-slate-900 text-white rounded-md text-xs font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                        className="w-full py-2.5 bg-slate-900 text-white rounded-md text-xs font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm active:scale-95 disabled:opacity-50 mt-2"
                     >
-                        Xác nhận nạp
+                        Xác nhận nạp cho lớp {classId}
                     </button>
                 )}
 
@@ -252,7 +256,7 @@ export default function FileUploader() {
                         onClick={removeFile}
                         className="w-full py-2.5 bg-white border border-slate-300 text-slate-600 rounded-md text-xs font-bold uppercase tracking-widest hover:bg-slate-50 transition-all mt-2"
                     >
-                        Nạp tài liệu khác
+                        Nạp thêm tài liệu
                     </button>
                 )}
             </div>

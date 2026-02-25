@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import re
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from groq import Groq
@@ -22,7 +23,6 @@ class AssessmentAgent:
         self.model = "llama-3.1-8b-instant" 
 
     def force_reset_subject(self, subject: str):
-        """Hàm dọn dẹp: Xóa sạch câu hỏi cũ của môn này nếu phát hiện lỗi"""
         try:
             self.db.query(QuestionBank).filter_by(subject=subject).delete()
             self.db.commit()
@@ -31,141 +31,227 @@ class AssessmentAgent:
             self.db.rollback()
             print(f"Lỗi reset data: {e}")
 
-    def get_or_create_quiz(self, subject: str, num_questions: int = 10):
-        existing_qs = self.db.query(QuestionBank).filter_by(subject=subject).all()
+    def get_or_create_quiz(self, subject: str, num_questions: int = 20, allowed_files: list = None):
+        """
+        Sinh bài kiểm tra tổng quát phục vụ phân loại năng lực học viên.
+        """
+        if not allowed_files:
+            print("⚠️ CẢNH BÁO: Không có danh sách file được phép cho lớp này.")
+            return None
+
+        # --- BƯỚC 1: KIỂM TRA DỮ LIỆU RÁC ---
+        existing_qs = self.db.query(QuestionBank).filter(
+            QuestionBank.subject == subject,
+            QuestionBank.source_file.in_(allowed_files)
+        ).all()
+        
         if existing_qs:
             count_A = sum(1 for q in existing_qs if q.correct_answer == 'A')
-            # Nếu hơn 80% câu hỏi có đáp án A -> Dữ liệu rác -> XÓA
             if len(existing_qs) > 5 and (count_A / len(existing_qs) > 0.8):
-                print(f"⚠️ Phát hiện dữ liệu cũ bị lỗi (Toàn A) -> Đang tự động xóa...")
-                self.force_reset_subject(subject)
-        
-        # --- BƯỚC 2: QUY TRÌNH LẤY ĐỀ ---
+                print(f"⚠️ Phát hiện dữ liệu lỗi (Toàn A) -> Đang reset...")
+                self.db.query(QuestionBank).filter(
+                    QuestionBank.subject == subject,
+                    QuestionBank.source_file.in_(allowed_files)
+                ).delete(synchronize_session=False)
+                self.db.commit()
+
+        # --- BƯỚC 2: QUY TRÌNH LẤY ĐỀ TỔNG QUÁT ---
         profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
         current_level = profile.current_level if profile else "Beginner"
 
-        unused_questions = self.db.query(QuestionBank).filter_by(
-            subject=subject, difficulty=current_level, is_used=False
+        questions = self.db.query(QuestionBank).filter(
+            QuestionBank.subject == subject,
+            QuestionBank.source_file.in_(allowed_files)
         ).limit(num_questions).all()
 
-        # Nếu thiếu câu hỏi, gọi hàm tạo thêm
-        if len(unused_questions) < num_questions:
-            needed = num_questions - len(unused_questions)
+        if len(questions) < num_questions:
+            needed = num_questions - len(questions)
+            self._generate_batch_safe(subject, current_level, needed + 10, allowed_files)
             
-            # Gọi hàm tạo (thêm 3 câu dự phòng trùng lặp)
-            result = self._generate_batch_safe(subject, current_level, needed + 3)
-            
-            # 👇 CHỐT CHẶN: Nếu hàm tạo trả về False (do không có tài liệu)
-            if result is False:
-                # Nếu trong kho cũng trống trơn -> Báo lỗi để Frontend xử lý
-                if not unused_questions:
-                    print("❌ LỖI: Chưa upload tài liệu, không thể tạo đề thi.")
-                    return None 
-            
-            # Query lại sau khi đã tạo xong
-            unused_questions = self.db.query(QuestionBank).filter_by(
-                subject=subject, difficulty=current_level, is_used=False
-            ).limit(num_questions).all()
+            questions = self.db.query(QuestionBank).filter(
+                QuestionBank.subject == subject,
+                QuestionBank.source_file.in_(allowed_files)
+            ).order_by(func.random()).limit(num_questions).all()
 
-        # Xáo trộn thứ tự câu hỏi trước khi trả về
-        random.shuffle(unused_questions)
-        return unused_questions[:num_questions]
+        if not questions:
+            return None 
 
-    def _generate_batch_safe(self, subject: str, level: str, count: int):
+        random.shuffle(questions)
+        return questions[:num_questions]
+
+    def _generate_batch_safe(self, subject: str, level: str, count: int, allowed_files: list = None):
         """
-        Hàm tạo câu hỏi an toàn. 
-        - Yêu cầu bắt buộc phải có Docs.
-        - Sử dụng logic 'Blind Shuffle' để random đáp án.
+        Sinh câu hỏi dựa trên toàn bộ giáo trình để đánh giá năng lực tổng thể.
         """
-        # 1. Tìm kiếm tài liệu
-        docs = self.vector_store.similarity_search(subject, k=6, filter={"subject": subject})
-        
-        # 👇 SỬA LỖI QUAN TRỌNG: Nếu không có docs -> Dừng ngay, trả về False
-        if not docs:
-            print(f"⚠️ CẢNH BÁO: Không tìm thấy tài liệu môn '{subject}'. Dừng tạo câu hỏi.")
-            return False
-
-        random.shuffle(docs)
-        context = "\n".join([d.page_content for d in docs[:3]])
-
-        # 2. Prompt: Ép AI luôn để đáp án đúng ở vị trí đầu tiên (Index 0)
-        # Để Python lo việc xáo trộn sau đó.
-        prompt = f"""
-        Tạo {count} câu hỏi trắc nghiệm môn {subject}, trình độ {level}.
-        
-        QUY TẮC CỐT LÕI (BẮT BUỘC):
-        1. Trong mảng "options", phần tử ĐẦU TIÊN (Index 0) LUÔN LUÔN là đáp án ĐÚNG.
-        2. 3 phần tử còn lại là đáp án sai.
-        3. KHÔNG thêm tiền tố "A.", "B." vào nội dung (Hệ thống sẽ tự thêm).
-        
-        Ngữ cảnh:
-        {context[:3000]}
-
-        Output JSON format:
-        {{
-            "questions": [
-                {{
-                    "question": "Nội dung câu hỏi?",
-                    "options": ["ĐÁP ÁN ĐÚNG", "Sai 1", "Sai 2", "Sai 3"],
-                    "explanation": "Giải thích ngắn."
-                }}
-            ]
-        }}
-        """
+        print(f"\n--- DEBUG RAG ASSESSMENT ---")
+        print(f"Môn học: {subject} | Số lượng cần tạo: {count}")
 
         try:
+            docs = self.vector_store.similarity_search(
+                f"Kiến thức tổng quát môn {subject}", 
+                k=25, 
+                filter={"subject": {"$eq": subject}}
+            )
+
+            if allowed_files:
+                filtered_docs = [
+                    d for d in docs 
+                    if os.path.basename(d.metadata.get("source", "")) in allowed_files
+                ]
+            else:
+                filtered_docs = docs
+
+            if not filtered_docs:
+                print(f"⚠️ Không tìm thấy mảnh kiến thức nào khớp với file của lớp.")
+                return False
+
+            random.shuffle(filtered_docs)
+            raw_source = filtered_docs[0].metadata.get("source", "")
+            primary_source_file = os.path.basename(raw_source) if raw_source else "Unknown"
+            
+            context = "\n".join([d.page_content for d in filtered_docs[:5]])
+            
+            # --- CẬP NHẬT LẠI PROMPT CHUẨN XÁC: ÉP AI TỰ TRỘN ĐÁP ÁN ---
+            prompt = f"""
+            BẠN LÀ CHUYÊN GIA BIÊN SOẠN ĐỀ THI TỔNG QUÁT (ASSESSMENT AGENT).
+            NHIỆM VỤ: Tạo {count} câu hỏi trắc nghiệm môn {subject} để đánh giá trình độ học viên.
+            
+            YÊU CẦU:
+            1. Câu hỏi phải bao quát nhiều khía cạnh kiến thức trong giáo trình.
+            2. Độ khó phù hợp để phân loại học viên thành: Beginner, Intermediate, Advanced.
+            
+            NGỮ CẢNH GIÁO TRÌNH: {context[:4000]}
+            
+            YÊU CẦU ĐỊNH DẠNG JSON CHUẨN XÁC:
+            {{
+                "questions": [
+                    {{
+                        "question": "Nội dung câu hỏi",
+                        "options": [
+                            "A. Đáp án 1",
+                            "B. Đáp án 2",
+                            "C. Đáp án 3",
+                            "D. Đáp án 4"
+                        ],
+                        "correct_answer": "B",
+                        "explanation": "Giải thích chi tiết tại sao B lại đúng dựa trên giáo trình."
+                    }}
+                ]
+            }}
+            QUY TẮC CỐT LÕI (BẮT BUỘC TUÂN THỦ):
+            - Mảng 'options' PHẢI có đúng 4 phần tử. BẮT BUỘC phải bắt đầu bằng chữ "A. ", "B. ", "C. ", "D. " theo đúng thứ tự.
+            - BẠN PHẢI TỰ XÁO TRỘN ĐÁP ÁN ĐÚNG NGẪU NHIÊN VÀO MỘT TRONG 4 VỊ TRÍ NÀY. Không được luôn đặt đáp án đúng ở vị trí A.
+            - Trường 'correct_answer' CHỈ ĐƯỢC ĐIỀN ĐÚNG 1 CHỮ CÁI DUY NHẤT (A, B, C hoặc D) tương ứng với đáp án đúng. Tuyệt đối không viết thêm bất cứ ký tự nào khác.
+            """
+
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "JSON Generator. Option[0] is always correct."},
+                    {"role": "system", "content": "You output strict JSON. You must randomize the correct answer position. 'correct_answer' MUST be a single letter: A, B, C, or D."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
-                temperature=0.6,
+                temperature=0.3, # Nhiệt độ thấp để nó ngoan ngoãn làm theo format
                 response_format={"type": "json_object"}
             )
             
             data = json.loads(chat_completion.choices[0].message.content)
-            questions_list = data.get("questions", [])
+            questions_list = data.get("questions", data.get("question_bank", []))
 
+            inserted_count = 0
             for item in questions_list:
-                raw_options = item['options']
-                if len(raw_options) < 4: continue 
-
-                # --- LOGIC RANDOM TUYỆT ĐỐI BẰNG PYTHON ---
-                # 1. Lấy nội dung đúng (Luôn là phần tử đầu tiên do Prompt quy định)
-                correct_content = raw_options[0] 
-
-                # 2. Xáo trộn vị trí danh sách
-                random.shuffle(raw_options)
-
-                # 3. Tìm xem đáp án đúng đã "trôi" về index nào
-                correct_index = raw_options.index(correct_content)
+                q_text = item.get('question') or item.get('content') or item.get('text')
+                raw_options = item.get('options') or item.get('choices') or []
+                correct_ans = str(item.get('correct_answer', 'A')).strip().upper()
                 
-                # 4. Gán nhãn A, B, C, D tương ứng
+                if not q_text or len(raw_options) < 4: 
+                    continue 
+
+                # Bóc đúng chữ cái A,B,C,D từ correct_answer của AI
+                match = re.search(r'([A-D])', correct_ans)
+                final_key = match.group(1) if match else "A"
+
+                # Chuẩn hóa lại mảng options để đảm bảo luôn là định dạng "A. Text", "B. Text"...
                 labels = ["A", "B", "C", "D"]
-                final_key = labels[correct_index]
+                final_options = []
+                for i in range(4):
+                    # Xóa chữ A. B. cũ đi (nếu có) rồi gắn lại cho đồng bộ
+                    clean_text = re.sub(r'^[A-D][\.\:\-\)]\s*', '', str(raw_options[i])).strip()
+                    final_options.append(f"{labels[i]}. {clean_text}")
 
-                # 5. Format lại chuỗi options ("A. Nội dung")
-                final_options = [f"{labels[i]}. {opt}" for i, opt in enumerate(raw_options)]
-
-                # Lưu vào DB (Check trùng lặp)
-                if not self.db.query(QuestionBank).filter(QuestionBank.content.ilike(item['question'].strip())).first():
+                if not self.db.query(QuestionBank).filter(QuestionBank.content.ilike(q_text.strip())).first():
                     db_q = QuestionBank(
                         subject=subject, 
                         difficulty=level, 
-                        content=item['question'].strip(),
+                        content=q_text.strip(),
                         options=final_options, 
-                        correct_answer=final_key, # Key chuẩn (A, B, C hoặc D)
+                        correct_answer=final_key, # LƯU TRỰC TIẾP CHỮ A, B, C HOẶC D VÀO ĐÂY!
                         explanation=item.get('explanation', ""),
-                        is_used=False
+                        is_used=False,
+                        source_file=primary_source_file
                     )
                     self.db.add(db_q)
+                    inserted_count += 1
 
             self.db.commit()
-            print(f"✅ Đã thêm {len(questions_list)} câu hỏi mới (Đã Random hóa).")
+            print(f"✅ Đã lưu thành công {inserted_count} câu hỏi tổng quát cho môn: {subject}")
             return True
-
         except Exception as e:
-            print(f"❌ Lỗi tạo batch: {e}")
+            print(f"❌ Lỗi AssessmentAgent: {e}")
             self.db.rollback()
             return False
+
+    # --- HÀM MỚI THÊM VÀO ĐỂ LƯU KẾT QUẢ ---
+    def submit_assessment(self, user_id: int, subject: str, user_answers: list):
+        """
+        Tính điểm và phân loại trình độ học viên sau khi nộp bài test.
+        """
+        try:
+            score = 0
+            total_questions = len(user_answers)
+            
+            if total_questions == 0:
+                return None
+
+            # 1. Tính số câu đúng
+            for ans in user_answers:
+                q_id = ans.get("question_id")
+                selected = ans.get("selected_option")
+                
+                question = self.db.query(QuestionBank).filter_by(id=q_id).first()
+                if question and question.correct_answer == selected:
+                    score += 1
+
+            # 2. Tính phần trăm và quyết định Level
+            percentage = (score / total_questions) * 100
+            
+            if percentage >= 80:
+                level = "Advanced"
+            elif percentage >= 50:
+                level = "Intermediate"
+            else:
+                level = "Beginner"
+
+            # 3. Lưu vào Database (Bảng LearnerProfile)
+            profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
+            if profile:
+                profile.current_level = level
+                # Nếu model LearnerProfile có cột score, bạn có thể bỏ comment dòng dưới:
+                # profile.score = percentage 
+            else:
+                profile = LearnerProfile(
+                    user_id=user_id,
+                    subject=subject,
+                    current_level=level
+                )
+                self.db.add(profile)
+
+            self.db.commit()
+            print(f"✅ Đã chấm và lưu điểm cho User {user_id}: {percentage}% - Trình độ: {level}")
+            
+            # Trả về kết quả để API gọi tiếp hàm sinh lộ trình
+            return {"score": percentage, "level": level}
+
+        except Exception as e:
+            self.db.rollback()
+            print(f"❌ Lỗi khi lưu kết quả bài test: {e}")
+            return None

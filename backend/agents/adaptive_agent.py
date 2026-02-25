@@ -1,11 +1,10 @@
-# backend/agents/adaptive_agent.py
 import json
-import re
 import os
 from sqlalchemy.orm import Session
 from groq import Groq
 from dotenv import load_dotenv
-from db.models import LearnerProfile, AssessmentHistory
+from db.models import LearnerProfile, LearningRoadmap
+from rag.vector_store import get_vector_store
 
 # Tải biến môi trường
 load_dotenv()
@@ -13,123 +12,150 @@ load_dotenv()
 class AdaptiveAgent:
     def __init__(self, db: Session):
         self.db = db
+        # Sử dụng key ADAPTIVE như bạn đã cấu hình
         self.api_key = os.getenv("GROQ_KEY_ADAPTIVE")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_ADAPTIVE trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant" # Model 
-
-    def generate_learning_path(self, subject: str):
-        """
-        Tạo lộ trình cá nhân hóa dựa trên dữ liệu thực tế từ Database.
-        """
-        profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
-        # Tương tác với Assessment Agent thông qua bảng AssessmentHistory
-        last_test = self.db.query(AssessmentHistory)\
-            .filter_by(subject=subject)\
-            .order_by(AssessmentHistory.timestamp.desc()).first()
+        self.model = "llama-3.1-8b-instant"
         
-        if not profile:
-            return {"message": "Chưa có dữ liệu học tập. Hãy làm bài kiểm tra trước!"}
+        # Kết nối tới Vector Database (ChromaDB)
+        self.vector_store = get_vector_store()
 
-        current_level = profile.current_level
-        avg_score = profile.avg_score if profile.avg_score else 0
-        
-        # Lấy chi tiết lỗi sai (wrong_detail) đã được Evaluation Agent lưu lại
-        wrong_data = "Kiến thức tổng quát"
-        if last_test and last_test.wrong_detail:
+    def generate_overall_roadmap(self, user_id: int, subject: str, allowed_filenames: list = None, force_level: str = None):
+        """
+        Dựa vào tài liệu giáo viên và trình độ học sinh để sinh lộ trình 10 buổi.
+        """
+        # 1. Xác định trình độ
+        current_level = force_level
+        if not current_level:
+            profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
+            current_level = profile.current_level if profile else "Beginner"
+
+        # 2. CONTENT AGENT: Trích xuất nội dung thực tế từ tài liệu
+        context_summary = ""
+        if allowed_filenames:
             try:
-                # Trích xuất nội dung các câu sai để AI phân tích
-                wrongs = json.loads(last_test.wrong_detail)
-                wrong_data = "\n".join([f"- Câu hỏi: {w['question']} | Bạn chọn: {w['student_choice']}" for w in wrongs])
-            except:
-                wrong_data = "Lỗi trong quá trình đọc chi tiết bài làm."
+                # Tìm kiếm các đoạn nội dung mang tính chất tổng quan/mục lục
+                docs = self.vector_store.similarity_search(
+                    f"Mục lục, các chương và kiến thức trọng tâm của môn {subject}", 
+                    k=15, 
+                    filter={"source": {"$in": allowed_filenames}}
+                )
+                context_summary = "\n".join([doc.page_content for doc in docs])
+            except Exception as e:
+                print(f"⚠️ Lỗi trích xuất chủ đề: {e}")
 
+        # 3. ADAPTIVE AGENT: Thiết kế lộ trình
         prompt = f"""
-        BẠN LÀ GIA SƯ AI CHUYÊN NGHIỆP MÔN {subject}.
+        BẠN LÀ CHUYÊN GIA THIẾT KẾ CHƯƠNG TRÌNH HỌC (ADAPTIVE LEARNING ARCHITECT).
         
-        DỮ LIỆU THỰC TẾ CỦA HỌC VIÊN:
-        - Trình độ hiện tại: {current_level}
-        - Điểm trung bình: {round(avg_score, 1)}/100
-        - CHI TIẾT CÁC CÂU LÀM SAI: 
-        {wrong_data}
+        NHIỆM VỤ: Dựa vào TÀI LIỆU GIÁO VIÊN dưới đây để chia môn {subject} thành đúng 10 BUỔI HỌC.
+        
+        TÀI LIỆU GIÁO VIÊN (NGUỒN DUY NHẤT):
+        {context_summary if context_summary else "Không có tài liệu, hãy sử dụng kiến thức chuẩn của môn " + subject}
 
-        NHIỆM VỤ: Thiết kế lộ trình 3 bước "VÁ LỖ HỔNG".
-        1. Phân tích chính xác tại sao học viên sai dựa trên các câu hỏi trên.
-        2. Đề xuất hành động cụ thể để khắc phục.
-        3. Đi thẳng vào vấn đề, nghiêm khắc và chuyên nghiệp.
+        YÊU CẦU NGHIÊM NGẶT:
+        1. KHÔNG ĐƯỢC tự ý đưa các chủ đề không liên quan (như Machine Learning, AI) nếu tài liệu không nhắc tới.
+        2. Lộ trình phải phù hợp với trình độ: {current_level}.
+        3. Định dạng trả về phải là JSON có đúng 10 session.
 
-        TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON LIST (KHÔNG GIẢI THÍCH THÊM):
-        [
-            {{
-                "step": "Bước 1", 
-                "topic": "Tên chủ đề cần vá", 
-                "action": "Hành động thực tế học viên phải làm", 
-                "reason": "Giải thích lỗi sai cốt lõi của họ"
-            }}
-        ]
+        JSON STRUCTURE:
+        {{
+            "roadmap": [
+                {{
+                    "session": 1,
+                    "topic": "Tên chủ đề từ tài liệu",
+                    "description": "Mô tả nội dung buổi học này cho mức {current_level}. Lưu ý cách thực hành với Gia sư AI.",
+                    "focus_level": "{current_level}"
+                }}
+            ]
+        }}
         """
 
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "Bạn là AI chuyên gia giáo dục. Chỉ trả về JSON hợp lệ."},
+                    {"role": "system", "content": "You are a strict curriculum architect. Only use provided context. Output JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
-                temperature=0.3,
+                temperature=0.2, # Thấp để đảm bảo tính chính xác
                 response_format={"type": "json_object"}
             )
             
-            content = chat_completion.choices[0].message.content
-            # Trích xuất JSON bằng Regex để đảm bảo an toàn
-            match = re.search(r'\[.*\]', content, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
+            roadmap_data = json.loads(chat_completion.choices[0].message.content)
+            final_roadmap = roadmap_data.get("roadmap", [])
             
-            # Nếu AI trả về object có key 'path' hoặc 'steps'
-            data = json.loads(content)
-            return data.get("path", data.get("steps", data))
+            # Đảm bảo đủ 10 session (đề phòng AI sinh thiếu)
+            if len(final_roadmap) > 0:
+                # Xóa lộ trình cũ trước khi lưu mới
+                self.db.query(LearningRoadmap).filter_by(user_id=user_id, subject=subject).delete()
+                
+                new_roadmap = LearningRoadmap(
+                    user_id=user_id,
+                    subject=subject,
+                    level_assigned=current_level,
+                    roadmap_data=final_roadmap,
+                    current_session=1
+                )
+                self.db.add(new_roadmap)
+                self.db.commit()
             
+            return final_roadmap
         except Exception as e:
-            print(f"❌ Lỗi Adaptive Agent (Path): {e}")
+            print(f"❌ Lỗi sinh lộ trình: {e}")
+            self.db.rollback()
             return []
 
-    def chat_with_tutor(self, subject: str, user_message: str, roadmap_context: str):
+    def chat_with_tutor(self, subject: str, user_message: str, roadmap_context: str, allowed_filenames: list = None):
         """
-        Gia sư AI đồng hành, sử dụng API riêng biệt.
+        Gia sư AI theo phương pháp Socrates.
         """
+        context_docs = ""
+        # Lọc tài liệu theo môn học và file cho phép
+        search_filter = {"subject": {"$eq": subject}}
+        if allowed_filenames:
+            search_filter = {
+                "$and": [
+                    {"subject": {"$eq": subject}},
+                    {"source": {"$in": allowed_filenames}}
+                ]
+            }
+
+        try:
+            docs = self.vector_store.similarity_search(user_message, k=4, filter=search_filter)
+            context_docs = "\n\n".join([doc.page_content for doc in docs])
+        except Exception as e:
+            context_docs = "Dữ liệu kiến thức đang được cập nhật."
+
+        # Lấy trình độ để điều chỉnh cách dùng từ
         profile = self.db.query(LearnerProfile).filter_by(subject=subject).first()
-        last_test = self.db.query(AssessmentHistory)\
-            .filter_by(subject=subject)\
-            .order_by(AssessmentHistory.timestamp.desc()).first()
-        
         current_level = profile.current_level if profile else "Beginner"
-        wrong_info = last_test.wrong_detail if (last_test and last_test.wrong_detail) else "Không có dữ liệu lỗi."
 
         prompt = f"""
-        BẠN LÀ GIA SƯ AI MÔN {subject}.
-        
-        BỐI CẢNH HỌC VIÊN:
-        - Trình độ: {current_level}
-        - Lịch sử lỗi sai: {wrong_info}
-        - Lộ trình đang theo dõi: {roadmap_context}
+        BẠN LÀ GIA SƯ AI SOCRATES DẠY MÔN {subject}.
+        TRÌNH ĐỘ HỌC VIÊN: {current_level}
+        BÀI HỌC HIỆN TẠI: {roadmap_context}
+        KIẾN THỨC TỪ GIÁO TRÌNH: {context_docs}
 
-        QUY TẮC:
-        1. Nếu học viên hỏi kiến thức, hãy liên hệ trực tiếp với những lỗi họ đã mắc phải.
-        2. Ngôn ngữ chuyên nghiệp, tập trung lấp lỗ hổng.
-        3. Tuyệt đối không khen ngợi sáo rỗng.
-
-        Học viên hỏi: "{user_message}"
+        QUY TẮC VÀNG:
+        1. Nhận xét câu trả lời của sinh viên: "{user_message}".
+        2. Giải thích MỘT Ý NHỎ kiến thức từ giáo trình (ngắn gọn, dưới 3 câu).
+        3. Kết thúc bằng MỘT CÂU HỎI GỢI MỞ để sinh viên tự suy nghĩ tiếp.
+        4. Tuyệt đối không viết bài giảng dài.
         """
 
         try:
             chat_completion = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": "You are a helpful Socratic Tutor. Short answers. Always end with a question."},
+                    {"role": "user", "content": prompt}
+                ],
                 model=self.model,
                 temperature=0.5
             )
             return chat_completion.choices[0].message.content
         except Exception as e:
-            return f"❌ Gia sư AI gặp lỗi kết nối API: {str(e)}"
+            return f"❌ Gia sư AI đang bận một chút: {str(e)}"

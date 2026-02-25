@@ -6,6 +6,30 @@ import {
   Clock, ArrowUpRight, ArrowDownRight, Minus, Timer 
 } from 'lucide-react';
 
+// 1. Định nghĩa Interface đầy đủ cho các hạng mục
+interface AssessmentItem {
+  id: number;
+  date: string;
+  duration: string | number;
+  score: number;
+  subject: string;
+  level?: string;
+  trend?: number;
+}
+
+interface StatsData {
+  avg: number;
+  total: number;
+  best: number;
+}
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  bg: string;
+}
+
 const SUBJECTS = [
   "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
   "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
@@ -15,10 +39,10 @@ const SUBJECTS = [
 ];
 
 export default function EvaluationPage() {
-  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[11]); 
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({ avg: 0, total: 0, best: 0 });
+  const [selectedSubject, setSelectedSubject] = useState<string>(SUBJECTS[11]); 
+  const [history, setHistory] = useState<AssessmentItem[]>([]); 
+  const [loading, setLoading] = useState<boolean>(false);
+  const [stats, setStats] = useState<StatsData>({ avg: 0, total: 0, best: 0 });
 
   useEffect(() => {
     fetchHistory();
@@ -27,41 +51,63 @@ export default function EvaluationPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8000/api/assessment/history/${selectedSubject}`);
-      const data = res.data.history || [];
-      
+      const userId = localStorage.getItem('user_id') || 2;
+      const res = await axios.get(`http://localhost:8000/api/stats/learning-stats`, {
+        params: {
+          user_id: userId,
+          subject: selectedSubject
+        }
+      });
+
+      // Nhặt mảng lịch sử từ đúng tên 'history_list' mà backend trả về
+      const data = res.data.history_list || [];
       setHistory(data);
       
-      if (data.length > 0) {
-        const total = data.length;
-        const sum = data.reduce((acc: number, curr: any) => acc + curr.score, 0);
-        const max = Math.max(...data.map((d: any) => d.score));
-        setStats({ avg: Math.round(sum / total), total: total, best: Math.round(max) });
-      } else {
-        setStats({ avg: 0, total: 0, best: 0 });
-      }
+      // Nhặt 3 con số thống kê nằm ngay bên ngoài
+      setStats({ 
+        avg: Math.round(res.data.avgScore || 0), 
+        total: res.data.totalTests || 0, 
+        best: Math.round(res.data.bestScore || 0) 
+      });
+
     } catch (error) {
+      console.error("Lỗi fetch stats:", error);
       setHistory([]);
+      setStats({ avg: 0, total: 0, best: 0 });
     } finally {
       setLoading(false);
     }
   };
 
-  //Xử lý múi giờ UTC -> Giờ Việt Nam chuẩn xác
-  const formatDateTime = (isoString: string) => {
-    const dateString = isoString.endsWith('Z') ? isoString : `${isoString}Z`;
-    const d = new Date(dateString);
+  // Xử lý múi giờ UTC -> Giờ Việt Nam chuẩn xác
+  const formatDateTime = (dateStr: string): string => {
+    if(!dateStr) return "N/A";
     
-    return d.toLocaleString('vi-VN', {
-      hour: '2-digit', minute: '2-digit',
-      day: '2-digit', month: '2-digit', year: 'numeric'
-    });
+    // Nếu Backend đã gửi chuỗi format sẵn "HH:mm - dd/mm/yyyy" thì dùng luôn
+    if (dateStr.includes('-') && !dateStr.includes('T')) return dateStr;
+
+    try {
+        const isoString = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`;
+        const d = new Date(isoString);
+        if (isNaN(d.getTime())) return dateStr; // Fallback nếu parse lỗi
+        
+        return d.toLocaleString('vi-VN', {
+          hour: '2-digit', minute: '2-digit',
+          day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    } catch {
+        return dateStr;
+    }
   };
 
-  const formatDuration = (seconds: number) => {
-    if (!seconds) return "0 giây";
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
+  const formatDuration = (val: string | number): string => {
+    if (!val) return "0 giây";
+    if (typeof val === 'string') return val; // Nếu backend gửi "1p 30s"
+    
+    const numVal = Number(val);
+    const m = Math.floor(numVal / 60);
+    const s = numVal % 60;
+    
     if (m > 0) return `${m} phút ${s} giây`;
     return `${s} giây`;
   };
@@ -133,18 +179,18 @@ export default function EvaluationPage() {
                   </tr>
                 </thead>
                 <tbody className="text-sm">
-                  {history.map((item, idx) => (
+                  {history.map((item: AssessmentItem, idx: number) => (
                     <tr key={item.id || idx} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors">
                       
-                      {/* 1. THỜI ĐIỂM NỘP */}
+                      {/* CỘT 1: NGÀY GIỜ */}
                       <td className="p-4">
                         <div className="flex items-center gap-2 font-medium text-slate-600">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             {formatDateTime(item.date)}
                         </div>
                       </td>
-                      
-                      {/* 2. THỜI GIAN HOÀN THÀNH */}
+
+                      {/* CỘT 2: THỜI GIAN LÀM BÀI */}
                       <td className="p-4">
                         <div className="flex items-center gap-2 text-slate-700 font-bold bg-slate-100 w-fit px-3 py-1.5 rounded-lg border border-slate-200">
                             <Timer className="w-3.5 h-3.5 text-indigo-500" />
@@ -152,38 +198,37 @@ export default function EvaluationPage() {
                         </div>
                       </td>
 
-                      {/* 3. CẤP ĐỘ */}
+                      {/* CỘT 3: CẤP ĐỘ */}
                       <td className="p-4">
                         <span className={`text-[10px] font-black px-2 py-1 rounded border uppercase ${
                           item.level === 'Advanced' ? 'bg-purple-50 text-purple-600 border-purple-100' :
                           item.level === 'Intermediate' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                           'bg-slate-100 text-slate-500 border-slate-200'
                         }`}>
-                          {item.level}
+                          {item.level || 'Beginner'}
                         </span>
                       </td>
 
-                      {/* 4. TIẾN BỘ (So sánh với bài trước) */}
+                      {/* CỘT 4: TIẾN BỘ */}
                       <td className="p-4">
-                        {/* Logic: Bài cuối cùng trong danh sách (idx === length - 1) là bài CŨ NHẤT */}
                         {idx === history.length - 1 ? (
                              <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
                                 <Minus className="w-4 h-4" /> Bài đầu tiên
                              </span>
                         ) : (
                             <div className={`flex items-center gap-2 font-bold ${
-                                item.trend > 0 ? 'text-emerald-600' : 
-                                item.trend < 0 ? 'text-red-500' : 'text-slate-400'
+                                (item.trend || 0) > 0 ? 'text-emerald-600' : 
+                                (item.trend || 0) < 0 ? 'text-red-500' : 'text-slate-400'
                             }`}>
-                                {item.trend > 0 ? <ArrowUpRight className="w-4 h-4" /> : 
-                                 item.trend < 0 ? <ArrowDownRight className="w-4 h-4" /> : 
+                                {(item.trend || 0) > 0 ? <ArrowUpRight className="w-4 h-4" /> : 
+                                 (item.trend || 0) < 0 ? <ArrowDownRight className="w-4 h-4" /> : 
                                  <Minus className="w-4 h-4" />}
-                                {item.trend > 0 ? `Tăng ${item.trend}đ` : item.trend < 0 ? `Giảm ${Math.abs(item.trend)}đ` : 'Không đổi'}
+                                {(item.trend || 0) > 0 ? `Tăng ${item.trend}đ` : (item.trend || 0) < 0 ? `Giảm ${Math.abs(item.trend || 0)}đ` : 'Không đổi'}
                             </div>
                         )}
                       </td>
 
-                      {/* 5. ĐIỂM SỐ */}
+                      {/* CỘT 5: ĐIỂM SỐ */}
                       <td className="p-4 text-right">
                         <span className={`text-xl font-black ${
                             item.score >= 80 ? 'text-emerald-600' : 
@@ -204,7 +249,7 @@ export default function EvaluationPage() {
   );
 }
 
-const StatCard = ({ icon, label, value, bg }: any) => (
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, bg }) => (
   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
     <div className={`p-3 rounded-xl ${bg}`}>{icon}</div>
     <div>
