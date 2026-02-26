@@ -77,9 +77,9 @@ export default function EvaluationPage() {
       
       // Nhặt 3 con số thống kê nằm ngay bên ngoài
       setStats({ 
-        avg: Math.round(res.data.avgScore || 0), 
+        avg: res.data.avgScore || 0, 
         total: res.data.totalTests || 0, 
-        best: Math.round(res.data.bestScore || 0) 
+        best: res.data.bestScore || 0 
       });
 
     } catch (error) {

@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+# backend/api/adaptive.py
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import List, Dict # THÊM TYPING CHO HISTORY
 from db.database import get_db
-from db import models # Import models để truy vấn thông tin lớp
+from db import models 
 from agents.adaptive_agent import AdaptiveAgent
 
 router = APIRouter()
@@ -12,60 +14,68 @@ class TutorChatRequest(BaseModel):
     subject: str
     message: str
     roadmap_context: str 
-    user_id: int # Bắt buộc gửi user_id từ frontend để biết học sinh thuộc lớp nào
+    user_id: int 
+    history: List[Dict[str, str]] = [] # THÊM TRƯỜNG NHẬN LỊCH SỬ TỪ FRONTEND
 
-# --- PHÂN TÍCH LỖI SAI & ĐỀ XUẤT LỘ TRÌNH ---
+# --- TẠO CHƯƠNG TRÌNH HỌC (10 BUỔI THEO TÀI LIỆU LỚP) ---
 @router.get("/recommend/{subject}")
-def get_learning_recommendation(subject: str, db: Session = Depends(get_db)):
+def get_learning_recommendation(
+    subject: str, 
+    user_id: int = Query(...), 
+    db: Session = Depends(get_db)
+):
     try:
         agent = AdaptiveAgent(db)
-        result = agent.generate_learning_path(subject)
+        
+        # 1. Tìm thông tin lớp học của user để lấy đúng file tài liệu
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        allowed_filenames = []
+        if user and user.class_id:
+            docs = db.query(models.Document).filter(models.Document.class_id == user.class_id).all()
+            allowed_filenames = [doc.filename for doc in docs]
+
+        # 2. Sinh chương trình học
+        result = agent.generate_overall_roadmap(
+            user_id=user_id, 
+            subject=subject, 
+            allowed_filenames=allowed_filenames
+        )
         
         if not result:
-            return {
-                "analysis": "Hệ thống ghi nhận bạn có lỗ hổng kiến thức cần ôn tập lại.",
-                "roadmap": ["Xem lại lý thuyết chương này", "Làm lại bài kiểm tra để AI đánh giá lại"]
-            }
+            raise HTTPException(status_code=500, detail="Không thể tạo chương trình học.")
             
-        return result
+        return {"roadmap": result}
     except Exception as e:
         print(f"❌ LỖI API RECOMMEND: {str(e)}")
-        raise HTTPException(status_code=500, detail="Không thể tạo lộ trình học tập lúc này.")
+        raise HTTPException(status_code=500, detail="Không thể tạo chương trình học lúc này.")
 
-# --- CHAT VỚI GIA SƯ (ĐÃ CẬP NHẬT LỌC THEO LỚP) ---
+# --- CHAT VỚI GIA SƯ (ĐÃ CẬP NHẬT LỌC THEO LỚP & DẠY THEO PHƯƠNG PHÁP SOCRATES & LƯU LỊCH SỬ) ---
 @router.post("/chat")
 def chat_with_adaptive_tutor(req: TutorChatRequest, db: Session = Depends(get_db)):
-    """
-    API điều phối: Tìm danh sách tài liệu của lớp học sinh đang tham gia
-    và yêu cầu Agent chỉ tìm kiếm trong các file đó.
-    """
     try:
-        # 1. Tìm học sinh để lấy class_id
+        # 1. Xác thực học sinh và lớp học
         user = db.query(models.User).filter(models.User.id == req.user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
         
         if not user.class_id:
-            return {"reply": "Bạn chưa tham gia lớp học nào. Vui lòng nhập mã lớp để bắt đầu học với tài liệu của giáo viên."}
+            return {"reply": "Bạn chưa tham gia lớp học nào. Vui lòng nhập mã lớp để bắt đầu học."}
 
-        # 2. Tìm danh sách file (Document) được gán cho class_id này
+        # 2. Lấy tài liệu của lớp
         allowed_docs = db.query(models.Document).filter(models.Document.class_id == user.class_id).all()
-        
-        # Chuyển thành danh sách tên file để dùng làm bộ lọc cho ChromaDB
         allowed_filenames = [doc.filename for doc in allowed_docs]
 
         if not allowed_filenames:
-            return {"reply": "Giáo viên lớp bạn hiện chưa tải tài liệu giảng dạy lên hệ thống cho lớp này."}
+            return {"reply": "Giáo viên hiện chưa tải tài liệu lên hệ thống."}
 
-        # 3. Khởi tạo Agent
+        # 3. Gọi Agent và truyền TOÀN BỘ dữ liệu thô (kể cả history) sang cho Agent xử lý
         agent = AdaptiveAgent(db)
-        
-        # 4. Gọi hàm chat và truyền thêm tham số allowed_filenames
         response = agent.chat_with_tutor(
             subject=req.subject, 
             user_message=req.message, 
-            roadmap_context=req.roadmap_context,
-            allowed_filenames=allowed_filenames # Đây là chìa khóa để AI nhìn đúng lớp
+            roadmap_context=req.roadmap_context, 
+            allowed_filenames=allowed_filenames,
+            history=req.history # <-- Truyền mảng history gốc vào đây
         )
         
         return {"reply": response}

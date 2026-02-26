@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
+import { Bot, ChevronRight, GraduationCap } from 'lucide-react';
 
 const SUBJECTS = [
   { id: 1, name: "Vật lý", icon: "⚛️" },
@@ -37,15 +38,21 @@ const AssessmentForm = () => {
   const [reviewMode, setReviewMode] = useState(false); 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // LẤY ID CHUẨN XÁC
   const getUserId = () => {
     if (typeof window === "undefined") return null;
     const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
     return id ? parseInt(id) : null;
   };
 
+  const getCleanErrorMessage = (error: any) => {
+    const raw = error.response?.data?.detail;
+    if (typeof raw === 'object') return raw[0]?.msg || raw.msg || "Lỗi dữ liệu";
+    return raw || "Lỗi hệ thống";
+  };
+
   const fetchRoadmap = async (selectedSub: string) => {
     const userId = getUserId();
+    if (!userId) return;
     try {
       const res = await axios.get(`http://localhost:8000/api/assessment/roadmap/${selectedSub}?user_id=${userId}`);
       if (res.data.has_roadmap) {
@@ -56,7 +63,6 @@ const AssessmentForm = () => {
     }
   };
 
-  // --- FIX TRIỆT ĐỂ 1: BUỘC RESET KHI ĐỔI HỌC SINH ---
   useEffect(() => {
     const currentUserId = getUserId();
     const savedData = localStorage.getItem(STORAGE_KEY);
@@ -64,7 +70,6 @@ const AssessmentForm = () => {
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
-        // Nếu ID trong bản lưu KHÁC ID đang đăng nhập -> XÓA SẠCH LUÔN
         if (parsed.userId !== currentUserId) {
           localStorage.removeItem(STORAGE_KEY);
           setAnswers({});
@@ -83,7 +88,6 @@ const AssessmentForm = () => {
     }
   }, []);
 
-  // --- FIX TRIỆT ĐỂ 2: LƯU TRẠNG THÁI KÈM USER_ID ---
   useEffect(() => {
     if (step === 'quiz' && questions.length > 0) {
       const dataToSave = { 
@@ -92,7 +96,7 @@ const AssessmentForm = () => {
         questions, 
         answers, 
         timer, 
-        userId: getUserId() // Cực kỳ quan trọng
+        userId: getUserId() 
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     }
@@ -179,8 +183,7 @@ const AssessmentForm = () => {
         toast.success(`Khởi tạo bài kiểm tra môn ${selectedSub}`);
       }
     } catch (error: any) {
-      const errMsg = error.response?.data?.detail || "Chưa có tài liệu môn này.";
-      toast.error(errMsg);
+      toast.error(getCleanErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -207,8 +210,8 @@ const AssessmentForm = () => {
       setStep('result');
       localStorage.removeItem(STORAGE_KEY);
       toast.success("Nộp bài thành công!");
-    } catch (error) {
-      toast.error("Lỗi khi nộp bài.");
+    } catch (error: any) {
+      toast.error(getCleanErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -229,10 +232,8 @@ const AssessmentForm = () => {
   const progressVal = Number(roadmap?.progress_percent);
   const displayProgress = isNaN(progressVal) ? 0 : Math.round(progressVal);
 
-  // --- FIX TRIỆT ĐỂ 3: DÙNG KEY ĐỂ RESET COMPONENT KHI ĐỔI NGƯỜI ---
   return (
-    <div key={getUserId()} className="min-h-screen bg-gray-50 py-10 px-4 font-sans">
-      <Toaster position="top-center" reverseOrder={false} />
+    <div key={getUserId()} className="min-h-screen bg-gray-50 py-10 px-4 font-sans text-slate-800">
 
       {step === 'select_subject' && (
         <div className="max-w-5xl mx-auto p-4 text-center">
@@ -240,7 +241,7 @@ const AssessmentForm = () => {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-blue-600 font-bold animate-pulse">AI đang soạn bài đánh giá năng lực...</p>
+              <p className="text-blue-600 font-bold animate-pulse">AI đang phân tích tài liệu và soạn đề...</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -259,7 +260,7 @@ const AssessmentForm = () => {
       )}
 
       {step === 'result' && resultData && !reviewMode && (
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6 pb-20">
           <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-300">
             <div className="flex flex-col sm:flex-row justify-between items-center border-b border-gray-100 pb-6 mb-6 gap-6">
                 <div className="flex items-center gap-5">
@@ -315,48 +316,54 @@ const AssessmentForm = () => {
             </div>
           </div>
 
-          {roadmap && (
-            <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-5 duration-700">
-              <div className="flex items-center justify-between mb-10">
+          {roadmap && roadmap.roadmap_data && roadmap.roadmap_data.length > 0 && (
+            <div className="bg-white p-8 md:p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-5 duration-700">
+              <div className="flex items-center justify-between mb-8">
                 <div>
                   <h3 className="text-lg font-black text-gray-800 uppercase tracking-tighter flex items-center gap-3">
-                    🚀 Lộ trình học tập cá nhân hóa
+                    <GraduationCap className="text-indigo-600" /> Chương trình học cá nhân hóa
                   </h3>
-                  <p className="text-xs text-gray-400 font-medium mt-1">Vượt qua bài kiểm tra (&gt;60%) để mở khóa bài tiếp theo</p>
-                </div>
-                <div className="px-4 py-2 bg-indigo-50 rounded-2xl border border-indigo-100 text-indigo-600 text-[10px] font-black uppercase">
-                  Trình độ: {roadmap.level_assigned}
+                  <p className="text-xs text-gray-400 font-medium mt-1">Dựa trên tài liệu lớp học và trình độ {roadmap.level_assigned || "Beginner"}</p>
                 </div>
               </div>
 
-              <div className="relative space-y-6">
-                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-gray-100 hidden sm:block"></div>
-                {roadmap.roadmap_data?.map((item: any, idx: number) => {
+              <div className="grid gap-4">
+                {roadmap.roadmap_data.map((item: any, idx: number) => {
                   const isCurrent = item.session === roadmap.current_session;
                   const isDone = item.session < roadmap.current_session;
                   return (
-                    <div key={idx} className={`relative flex items-start gap-6 transition-all ${!isCurrent && !isDone ? "opacity-40" : "opacity-100"}`}>
-                      <div className={`relative z-10 w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-sm shadow-lg transition-transform ${
-                        isCurrent ? "bg-indigo-600 text-white scale-110 shadow-indigo-200" : 
-                        isDone ? "bg-emerald-500 text-white" : "bg-white border-2 border-gray-100 text-gray-300"
-                      }`}>
-                        {isDone ? "✓" : item.session}
-                      </div>
-                      <div className={`flex-1 p-6 rounded-3xl border transition-all ${
-                        isCurrent ? "bg-indigo-50 border-indigo-200 shadow-sm" : "bg-white border-gray-100"
-                      }`}>
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="text-sm font-black text-gray-800 uppercase leading-tight">{item.topic}</h4>
-                          {isCurrent && <span className="bg-indigo-600 text-[8px] text-white px-2 py-1 rounded-md font-black animate-pulse">ĐANG HỌC</span>}
+                    <div 
+                      key={idx} 
+                      className={`group p-5 border rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between transition-all ${
+                        isCurrent ? "border-indigo-200 bg-indigo-50/30 cursor-pointer hover:shadow-xl" : 
+                        isDone ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100 bg-slate-50/50"
+                      }`}
+                      onClick={() => { if (isCurrent) window.location.href = '/adaptive'; }}
+                    >
+                      <div className="flex items-center gap-5 w-full md:w-auto">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm transition-all ${
+                          isCurrent ? "bg-indigo-600 text-white shadow-indigo-200 scale-110" : 
+                          isDone ? "bg-emerald-500 text-white" : "bg-white text-slate-400"
+                        }`}>
+                          {isDone ? "✓" : item.session}
                         </div>
-                        <p className="text-[11px] text-gray-500 font-medium leading-relaxed mb-4">{item.description}</p>
-                        {isCurrent && (
-                          <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-indigo-100/50">
-                            <button onClick={() => toast.success(`Chuyển sang Gia sư AI: ${item.topic}`)} className="px-4 py-2 bg-gray-900 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-black transition-all shadow-md">💬 Học với Gia sư AI</button>
-                            <button onClick={() => handleSelectSubject(subject)} className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all">📝 Test để qua bài</button>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className={`font-black text-sm uppercase ${isCurrent ? 'text-indigo-700' : isDone ? 'text-emerald-700' : 'text-slate-800'}`}>{item.topic}</h4>
+                            {isCurrent && <span className="hidden md:inline-block bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded font-black uppercase animate-pulse">Đang học</span>}
                           </div>
-                        )}
+                          <p className="text-[11px] text-slate-500 font-medium line-clamp-1">{item.description}</p>
+                        </div>
                       </div>
+                      
+                      {isCurrent && (
+                        <div className="mt-4 md:mt-0 w-full md:w-auto flex justify-end items-center gap-3">
+                           <span className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white shadow-md shadow-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all">
+                             <Bot size={14} /> Học với AI
+                           </span>
+                           <ChevronRight className="text-indigo-400 hidden md:block" />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
