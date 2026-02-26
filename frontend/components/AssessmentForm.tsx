@@ -226,6 +226,11 @@ const AssessmentForm = () => {
     if (window.confirm("✅ Xác nhận nộp bài?")) handleSubmit();
   };
 
+  // SỬA: Hàm chuyển sang trang Gia sư AI kèm URL params
+  const handleGoToAdaptive = () => {
+    window.location.href = `/adaptive?subject=${encodeURIComponent(subject)}&auto_start=true`;
+  };
+
   const currentQ = questions[currentIndex];
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const isPassed = resultData?.is_passed !== false;
@@ -335,10 +340,9 @@ const AssessmentForm = () => {
                     <div 
                       key={idx} 
                       className={`group p-5 border rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between transition-all ${
-                        isCurrent ? "border-indigo-200 bg-indigo-50/30 cursor-pointer hover:shadow-xl" : 
+                        isCurrent ? "border-indigo-200 bg-indigo-50/30 hover:shadow-xl" : 
                         isDone ? "border-emerald-100 bg-emerald-50/20" : "border-slate-100 bg-slate-50/50"
                       }`}
-                      onClick={() => { if (isCurrent) window.location.href = '/adaptive'; }}
                     >
                       <div className="flex items-center gap-5 w-full md:w-auto">
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm transition-all ${
@@ -358,9 +362,10 @@ const AssessmentForm = () => {
                       
                       {isCurrent && (
                         <div className="mt-4 md:mt-0 w-full md:w-auto flex justify-end items-center gap-3">
-                           <span className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white shadow-md shadow-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all">
+                           {/* SỬA CHỖ NÀY: Gọi handleGoToAdaptive thay vì location rỗng */}
+                           <button onClick={handleGoToAdaptive} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white shadow-md shadow-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all hover:bg-indigo-700">
                              <Bot size={14} /> Học với AI
-                           </span>
+                           </button>
                            <ChevronRight className="text-indigo-400 hidden md:block" />
                         </div>
                       )}

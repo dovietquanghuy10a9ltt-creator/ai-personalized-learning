@@ -38,13 +38,78 @@ export default function AdaptiveLearningPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // =========================================================================
+  // CƠ CHẾ TỰ ĐỘNG KHỞI TẠO TỪ URL (AUTO-LOAD)
+  // =========================================================================
   useEffect(() => {
     const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
     if (id) {
-      setUserId(parseInt(id));
-      fetchUserStatus(parseInt(id));
+      const uid = parseInt(id);
+      setUserId(uid);
+      fetchUserStatus(uid);
+
+      // Đọc URL xem có truyền môn học từ trang Kết quả/Dashboard sang không
+      const params = new URLSearchParams(window.location.search);
+      const urlSubject = params.get("subject");
+      const autoStart = params.get("auto_start") === "true"; // Lệnh tự động mở chat
+      
+      let targetSubject = selectedSubject;
+      if (urlSubject) {
+          targetSubject = urlSubject;
+          setSelectedSubject(urlSubject); // Tự động đổi dropdown
+      }
+
+      // TỰ ĐỘNG TẢI LỘ TRÌNH 
+      autoLoadRoadmap(uid, targetSubject, autoStart);
     }
   }, []);
+
+  const autoLoadRoadmap = async (uid: number, subj: string, autoStart: boolean = false) => {
+    setLoadingRoadmap(true);
+    setRoadmap([]); 
+    setMessages([]);
+    setActiveLessonContext("");
+    
+    try {
+      const res = await axios.get(`http://localhost:8000/api/assessment/roadmap/${subj}?user_id=${uid}`);
+      
+      if (res.data && res.data.has_roadmap) {
+         const loadedRoadmap = res.data.roadmap_data;
+         const currentSess = res.data.current_session;
+         
+         setRoadmap(loadedRoadmap);
+         setCurrentSessionIndex(currentSess); 
+         setLearnerLevel(res.data.level_assigned.toUpperCase());
+         
+         // Nếu truyền link kèm auto_start=true -> Mở Chat AI luôn vào bài đang học
+         if (autoStart && loadedRoadmap.length > 0) {
+             const lesson = loadedRoadmap.find((l: any) => l.session === currentSess) || loadedRoadmap[0];
+             // Delay nhẹ để giao diện render xong roadmap
+             setTimeout(() => {
+                 handleStartTutor(lesson);
+             }, 300);
+         }
+      } else if (!autoStart) {
+         // Chỉ báo lỗi nếu người dùng tự bấm nút tải
+         toast.error("Bạn chưa làm bài đánh giá năng lực môn này. Hãy quay lại trang Kiểm Tra nhé!");
+      }
+    } catch (error) {
+      if (!autoStart) toast.error("Lỗi khi tải chương trình học.");
+    } finally {
+      setLoadingRoadmap(false);
+    }
+  };
+
+  // Nút bấm "Tải Lộ Trình" thủ công sẽ dùng lại hàm này
+  const handleLoadRoadmap = () => {
+    if (!userId) {
+      toast.error("Vui lòng đăng nhập lại!");
+      return;
+    }
+    autoLoadRoadmap(userId, selectedSubject, false);
+    toast.success("Đã tải chương trình học!");
+  };
+  // =========================================================================
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -75,34 +140,6 @@ export default function AdaptiveLearningPage() {
       toast.error(e.response?.data?.detail || "Mã lớp không hợp lệ");
     } finally {
       setJoining(false);
-    }
-  };
-
-  const handleLoadRoadmap = async () => {
-    if (!userId) {
-      toast.error("Vui lòng đăng nhập lại!");
-      return;
-    }
-    setLoadingRoadmap(true);
-    setRoadmap([]); 
-    setMessages([]);
-    setActiveLessonContext("");
-    
-    try {
-      const res = await axios.get(`http://localhost:8000/api/assessment/roadmap/${selectedSubject}?user_id=${userId}`);
-      
-      if (res.data && res.data.has_roadmap) {
-         setRoadmap(res.data.roadmap_data);
-         setCurrentSessionIndex(res.data.current_session); 
-         setLearnerLevel(res.data.level_assigned.toUpperCase());
-         toast.success("Đã tải chương trình học của bạn!");
-      } else {
-         toast.error("Bạn chưa làm bài đánh giá năng lực môn này. Hãy quay lại trang Kiểm Tra nhé!");
-      }
-    } catch (error) {
-      toast.error("Lỗi khi tải chương trình học.");
-    } finally {
-      setLoadingRoadmap(false);
     }
   };
 
@@ -161,7 +198,13 @@ export default function AdaptiveLearningPage() {
       setMessages(prev => [...prev, { role: "assistant", content: res.data.reply }]);
     } catch (e: any) {
       console.error("LỖI CHAT API:", e);
-      toast.error("Đường truyền gặp sự cố.");
+      const realError = e.response?.data?.detail || e.message || "Lỗi đường truyền API";
+      const errorString = typeof realError === 'object' ? JSON.stringify(realError) : realError;
+      
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        content: `❌ **Hệ thống báo lỗi:** ${errorString}` 
+      }]);
     } finally {
       setLoadingChat(false);
     }
@@ -233,7 +276,7 @@ export default function AdaptiveLearningPage() {
               <select 
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="flex-1 sm:w-48 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-50 transition-all"
+                className="flex-1 sm:w-48 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 appearance-none cursor-pointer transition-all"
               >
                 {SUBJECTS.map(sub => <option key={sub} value={sub}>{sub}</option>)}
               </select>
