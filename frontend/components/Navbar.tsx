@@ -54,9 +54,8 @@ export default function Navbar() {
     ];
   } else if (user.role === 'student') {
     navs = [
-      { name: 'Bảng điều khiển', href: '/adaptive', icon: Layout },
-      { name: 'Kiểm tra', href: '/assessment', icon: FileText },
       { name: 'Gia sư AI', href: '/adaptive', icon: GraduationCap },
+      { name: 'Kiểm tra', href: '/assessment', icon: FileText },
       { name: 'Kết quả', href: '/evaluation', icon: LineChart },
     ];
   }

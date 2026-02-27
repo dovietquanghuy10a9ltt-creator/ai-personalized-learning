@@ -28,8 +28,6 @@ const STORAGE_KEY = 'quiz_auto_save_data';
 const AssessmentForm = () => {
   const [step, setStep] = useState<'select_subject' | 'quiz' | 'result'>('select_subject');
   const [subject, setSubject] = useState("");
-  
-  // Trạng thái lưu thêm tên bài học để hiển thị cho đẹp
   const [sessionTopic, setSessionTopic] = useState(""); 
   
   const [questions, setQuestions] = useState<any[]>([]);
@@ -67,18 +65,16 @@ const AssessmentForm = () => {
     }
   };
 
-  // --- AUTO-LOAD QUY TRÌNH KIỂM TRA TỪ URL ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlSubject = params.get("subject");
     const urlTopic = params.get("topic");
     const urlLevel = params.get("level");
 
-    // Nếu URL có đủ thông tin -> Học sinh đang bấm "Test qua bài" từ trang Adaptive
     if (urlSubject && urlTopic && urlLevel && step === 'select_subject') {
       handleStartSessionQuiz(urlSubject, urlTopic, urlLevel);
     }
-  }, []); // Chỉ chạy 1 lần khi component mount
+  }, []);
 
   useEffect(() => {
     const currentUserId = getUserId();
@@ -141,7 +137,6 @@ const AssessmentForm = () => {
       const handlePopState = () => {
         if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi. Nếu thoát, bài làm sẽ bị xóa.")) {
           localStorage.removeItem(STORAGE_KEY);
-          // Xóa param trên URL cho sạch
           window.history.replaceState(null, "", window.location.pathname);
           setStep('select_subject');
         } else {
@@ -180,13 +175,12 @@ const AssessmentForm = () => {
     }
   };
 
-  // --- HÀM TẠO ĐỀ THI ĐÁNH GIÁ ĐẦU VÀO (TỔNG QUÁT) ---
   const handleSelectSubject = async (selectedSub: string) => {
     const userId = getUserId();
     if (!userId) { toast.error("Vui lòng đăng nhập lại."); return; }
 
     setSubject(selectedSub);
-    setSessionTopic(""); // Reset topic về rỗng vì đây là bài tổng quát
+    setSessionTopic(""); 
     setLoading(true);
     setAnswers({});
     setTimer(0);
@@ -214,13 +208,12 @@ const AssessmentForm = () => {
     }
   };
 
-  // --- HÀM MỚI: TẠO ĐỀ THI THEO BUỔI HỌC (BÁM SÁT TOPIC VÀ LEVEL) ---
   const handleStartSessionQuiz = async (urlSubject: string, urlTopic: string, urlLevel: string) => {
     const userId = getUserId();
     if (!userId) { toast.error("Vui lòng đăng nhập lại."); return; }
 
     setSubject(urlSubject);
-    setSessionTopic(urlTopic); // Lưu lại tên bài học để hiển thị UI
+    setSessionTopic(urlTopic); 
     setLoading(true);
     setAnswers({});
     setTimer(0);
@@ -231,7 +224,6 @@ const AssessmentForm = () => {
     localStorage.removeItem(STORAGE_KEY);
 
     try {
-      // Gọi xuống API tạo đề thi cuối buổi chuyên biệt
       const res = await axios.post("http://localhost:8000/api/assessment/generate-session", { 
         subject: urlSubject,
         user_id: userId,
@@ -247,7 +239,6 @@ const AssessmentForm = () => {
       }
     } catch (error: any) {
       toast.error(getCleanErrorMessage(error));
-      // Báo lỗi thì đẩy về trang chọn môn học
       setStep('select_subject'); 
     } finally {
       setLoading(false);
@@ -266,7 +257,6 @@ const AssessmentForm = () => {
         selected_option: opt
       })),
       duration_seconds: timer,
-      // ĐÂY LÀ DÒNG LỆNH FIX LỖI NHẢY LEVEL KHI QUA BÀI:
       is_session_quiz: sessionTopic !== "" 
     };
 
@@ -276,7 +266,6 @@ const AssessmentForm = () => {
       await fetchRoadmap(subject); 
       setStep('result');
       localStorage.removeItem(STORAGE_KEY);
-      // Xóa Param sau khi nộp bài để URL sạch sẽ
       window.history.replaceState(null, "", window.location.pathname);
       toast.success("Nộp bài thành công!");
     } catch (error: any) {
@@ -334,6 +323,29 @@ const AssessmentForm = () => {
 
       {step === 'result' && resultData && !reviewMode && (
         <div className="max-w-4xl mx-auto space-y-6 pb-20">
+          
+          {/* HIỆU ỨNG BẰNG KHEN TỐT NGHIỆP */}
+          {roadmap?.is_completed && (
+            <div className="relative p-1 rounded-[2.5rem] bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 shadow-2xl shadow-yellow-500/30 animate-in zoom-in duration-700 overflow-hidden mb-8">
+               <div className="relative bg-white rounded-[2.4rem] p-8 md:p-12 text-center overflow-hidden">
+                  <div className="absolute -top-10 -right-10 w-40 h-40 bg-yellow-100 rounded-full blur-3xl opacity-50"></div>
+                  <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-amber-100 rounded-full blur-3xl opacity-50"></div>
+
+                  <div className="text-7xl mb-6 animate-bounce relative z-10 drop-shadow-lg">🎓</div>
+                  <h1 className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-600 uppercase tracking-tighter mb-4 relative z-10">
+                    BẰNG CHỨNG NHẬN TỐT NGHIỆP
+                  </h1>
+                  <p className="text-slate-600 font-medium text-sm md:text-lg mb-8 relative z-10 max-w-2xl mx-auto">
+                    Chúc mừng bạn đã xuất sắc vượt qua bài thi cuối khóa. Hệ thống ghi nhận bạn đã hoàn thành trọn vẹn lộ trình học tập và chính thức làm chủ tri thức môn <strong className="text-amber-600 font-black">{subject}</strong>!
+                  </p>
+                  <div className="inline-block bg-amber-50 border-2 border-amber-200 px-8 py-4 rounded-3xl relative z-10 shadow-inner">
+                    <p className="text-xs font-black text-amber-500/80 uppercase tracking-widest mb-1">Trình độ tốt nghiệp</p>
+                    <p className="text-3xl font-black text-amber-600 uppercase tracking-wider">{resultData.level}</p>
+                  </div>
+               </div>
+            </div>
+          )}
+
           <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-300">
             <div className="flex flex-col sm:flex-row justify-between items-center border-b border-gray-100 pb-6 mb-6 gap-6">
                 <div className="flex items-center gap-5">
@@ -394,7 +406,8 @@ const AssessmentForm = () => {
             </div>
           </div>
 
-          {roadmap && roadmap.roadmap_data && roadmap.roadmap_data.length > 0 && (
+          {/* CHỈ HIỂN THỊ DANH SÁCH LỘ TRÌNH KHI CHƯA TỐT NGHIỆP */}
+          {roadmap && roadmap.roadmap_data && roadmap.roadmap_data.length > 0 && !roadmap.is_completed && (
             <div className="bg-white p-8 md:p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-5 duration-700">
               <div className="flex items-center justify-between mb-8">
                 <div>

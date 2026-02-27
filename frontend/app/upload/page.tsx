@@ -1,9 +1,19 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import FileUploader from '@/components/FileUploader';
 import { Database, ShieldCheck, Sparkles, Zap, Target } from 'lucide-react';
 
 export default function UploadPage() {
+  // --- THÊM STATE ĐỂ LƯU ID GIÁO VIÊN VÀ LỚP HỌC ---
+  const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [classId, setClassId] = useState<number | null>(1); // Tạm set cứng là 1, sau này bạn có ô chọn lớp thì update state này nhé
+
+  // --- LẤY ID TỪ LOCALSTORAGE KHI LOAD TRANG ---
+  useEffect(() => {
+    const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
+    if (id) setTeacherId(id);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] py-8 md:py-12 font-sans">
       
@@ -41,7 +51,8 @@ export default function UploadPage() {
           <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-[3rem] blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
           
           <div className="relative bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/60 p-3 border border-slate-50">
-            <FileUploader />
+            {/* ĐÃ SỬA LỖI ĐỎ Ở ĐÂY BẰNG CÁCH TRUYỀN PROPS */}
+            <FileUploader teacherId={teacherId} classId={classId} />
           </div>
         </div>
 

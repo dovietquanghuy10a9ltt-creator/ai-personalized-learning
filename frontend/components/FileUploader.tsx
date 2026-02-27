@@ -12,7 +12,6 @@ const SUBJECTS = [
   "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
 ];
 
-// Cập nhật Interface nhận classId và teacherId
 interface FileUploaderProps {
   onUploadSuccess?: () => void;
   teacherId: string | null;
@@ -50,7 +49,14 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
     try {
       const res = await axios.post("http://localhost:8000/api/upload/analyze-subject", formData);
       const suggested = res.data.suggested_subject;
-      setSelectedSubject(suggested || "Khác");
+      
+      // XỬ LÝ AN TOÀN CHO THẺ SELECT: 
+      // Chỉ gán nếu môn AI gợi ý có trong danh sách, nếu không thì gán "Khác"
+      if (suggested && SUBJECTS.includes(suggested)) {
+          setSelectedSubject(suggested);
+      } else {
+          setSelectedSubject("Khác");
+      }
     } catch (error) {
       console.error(error);
       setSelectedSubject("Khác");
@@ -90,7 +96,6 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
   const handleConfirmUpload = async () => {
     if (!file || !selectedSubject) return;
     
-    // Kiểm tra classId trước khi upload
     if (!classId) {
         toast.error("Lỗi: Vui lòng chọn một lớp học trước khi nạp tài liệu!");
         return;
@@ -104,7 +109,6 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
     formData.append("file", file);
     formData.append("manual_subject", selectedSubject);
     
-    // GỬI KÈM ID GIÁO VIÊN VÀ ID LỚP HỌC
     if (teacherId) formData.append("teacher_id", teacherId);
     formData.append("class_id", classId.toString());
 
@@ -168,7 +172,6 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
         </label>
       ) : (
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            {/* ... Phần hiển thị file đang nạp giữ nguyên ... */}
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white border border-slate-200 rounded flex items-center justify-center shrink-0">
