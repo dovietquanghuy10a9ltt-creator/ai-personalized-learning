@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import { 
   Send, Bot, Map, Sparkles, MessageSquare, GraduationCap,
@@ -17,12 +17,14 @@ const SUBJECTS = [
 ];
 
 export default function AdaptiveLearningPage() {
-  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[11]);
+  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[5]);
   
   const [roadmap, setRoadmap] = useState<any[]>([]);
   const [loadingRoadmap, setLoadingRoadmap] = useState(false);
   const [currentSessionIndex, setCurrentSessionIndex] = useState(1); 
   const [learnerLevel, setLearnerLevel] = useState("BEGINNER");
+  // THÊM: State lưu trạng thái tốt nghiệp
+  const [isCompleted, setIsCompleted] = useState(false);
 
   const [messages, setMessages] = useState<{role: string, content: string}[]>([]);
   const [input, setInput] = useState("");
@@ -48,23 +50,21 @@ export default function AdaptiveLearningPage() {
       setUserId(uid);
       fetchUserStatus(uid);
 
-      // Đọc URL xem có truyền môn học từ trang Kết quả/Dashboard sang không
       const params = new URLSearchParams(window.location.search);
       const urlSubject = params.get("subject");
-      const autoStart = params.get("auto_start") === "true"; // Lệnh tự động mở chat
+      const autoStart = params.get("auto_start") === "true";
       
       let targetSubject = selectedSubject;
       if (urlSubject) {
           targetSubject = urlSubject;
-          setSelectedSubject(urlSubject); // Tự động đổi dropdown
+          setSelectedSubject(urlSubject);
       }
 
-      // TỰ ĐỘNG TẢI LỘ TRÌNH 
-      autoLoadRoadmap(uid, targetSubject, autoStart);
+      autoLoadRoadmap(uid, targetSubject, autoStart, false);
     }
   }, []);
 
-  const autoLoadRoadmap = async (uid: number, subj: string, autoStart: boolean = false) => {
+  const autoLoadRoadmap = async (uid: number, subj: string, autoStart: boolean = false, isManualClick: boolean = false) => {
     setLoadingRoadmap(true);
     setRoadmap([]); 
     setMessages([]);
@@ -81,33 +81,31 @@ export default function AdaptiveLearningPage() {
          setCurrentSessionIndex(currentSess); 
          setLearnerLevel(res.data.level_assigned.toUpperCase());
          
-         // Nếu truyền link kèm auto_start=true -> Mở Chat AI luôn vào bài đang học
+         // THÊM: Cập nhật biến Tốt nghiệp từ Backend gửi lên
+         setIsCompleted(res.data.is_completed);
+         
          if (autoStart && loadedRoadmap.length > 0) {
              const lesson = loadedRoadmap.find((l: any) => l.session === currentSess) || loadedRoadmap[0];
-             // Delay nhẹ để giao diện render xong roadmap
              setTimeout(() => {
                  handleStartTutor(lesson);
              }, 300);
          }
-      } else if (!autoStart) {
-         // Chỉ báo lỗi nếu người dùng tự bấm nút tải
+      } else if (isManualClick) {
          toast.error("Bạn chưa làm bài đánh giá năng lực môn này. Hãy quay lại trang Kiểm Tra nhé!");
       }
     } catch (error) {
-      if (!autoStart) toast.error("Lỗi khi tải chương trình học.");
+      if (isManualClick) toast.error("Lỗi khi tải chương trình học.");
     } finally {
       setLoadingRoadmap(false);
     }
   };
 
-  // Nút bấm "Tải Lộ Trình" thủ công sẽ dùng lại hàm này
   const handleLoadRoadmap = () => {
     if (!userId) {
       toast.error("Vui lòng đăng nhập lại!");
       return;
     }
-    autoLoadRoadmap(userId, selectedSubject, false);
-    toast.success("Đã tải chương trình học!");
+    autoLoadRoadmap(userId, selectedSubject, false, true);
   };
   // =========================================================================
 
@@ -146,14 +144,12 @@ export default function AdaptiveLearningPage() {
   const handleStartTutor = (lesson: any) => {
     const context = `BUỔI ${lesson.session}: ${lesson.topic} - Mô tả: ${lesson.description}`;
     setActiveLessonContext(context);
-    // Xóa chat cũ và đặt câu chào đầu tiên
     setMessages([{ role: 'user', content: "Chào AI, hãy bắt đầu bài học hôm nay nhé." }]);
     setTriggerInitialMessage(true);
   };
 
   useEffect(() => {
     if (triggerInitialMessage && activeLessonContext) {
-      // Tin nhắn đầu tiên: lịch sử gửi lên là mảng rỗng
       sendChatMessage("Chào AI, hãy bắt đầu bài học hôm nay nhé.", activeLessonContext, []);
       setTriggerInitialMessage(false);
     }
@@ -162,22 +158,19 @@ export default function AdaptiveLearningPage() {
   const handleTakeTest = (lesson: any) => {
     toast.success(`Đang chuyển sang bài kiểm tra Buổi ${lesson.session}...`);
     setTimeout(() => {
-        window.location.href = '/assessment';
+        window.location.href = `/assessment?subject=${encodeURIComponent(selectedSubject)}&topic=${encodeURIComponent(lesson.topic)}&level=${encodeURIComponent(learnerLevel)}`;
     }, 1000);
   };
 
-  // --- HÀM GỬI TIN NHẮN: FIX THỨ TỰ HIỂN THỊ ---
   const handleSendMessage = async () => {
     if (!input.trim() || !userId || !activeLessonContext) return;
     
     const userMsg = input.trim();
     setInput("");
 
-    // 1. Cập nhật State để tin nhắn người dùng hiện ngay lập tức
     const updatedHistory = [...messages, { role: "user", content: userMsg }];
     setMessages(updatedHistory);
 
-    // 2. Gửi đi kèm toàn bộ lịch sử (đã có tin nhắn vừa gõ) để AI xử lý
     await sendChatMessage(userMsg, activeLessonContext, updatedHistory);
   };
 
@@ -191,10 +184,9 @@ export default function AdaptiveLearningPage() {
         message: message,
         roadmap_context: context,
         user_id: Number(currentId),
-        history: chatHistory // Gửi lịch sử để AI có trí nhớ
+        history: chatHistory 
       });
 
-      // 3. Nối phản hồi của AI vào sau tin nhắn User đã hiện
       setMessages(prev => [...prev, { role: "assistant", content: res.data.reply }]);
     } catch (e: any) {
       console.error("LỖI CHAT API:", e);
@@ -212,7 +204,6 @@ export default function AdaptiveLearningPage() {
 
   return (
     <div className="fixed inset-0 bg-[#F8FAFC] font-sans text-slate-800 flex flex-col pt-[80px] pb-4 px-6 overflow-hidden">
-      <Toaster position="top-center" />
 
       <div className="max-w-[1600px] w-full mx-auto mb-4 shrink-0">
         <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
@@ -315,9 +306,23 @@ export default function AdaptiveLearningPage() {
                       </span>
                    </div>
 
+                   {/* THÊM: BANNER TỐT NGHIỆP HIỂN THỊ KHI isCompleted = true */}
+                   {isCompleted && (
+                      <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-5 rounded-2xl mb-6 flex items-center justify-between shadow-sm relative z-10 animate-in fade-in zoom-in">
+                         <div className="flex items-center gap-4">
+                            <span className="text-3xl">🎓</span>
+                            <div>
+                               <h3 className="font-black text-sm uppercase tracking-wider">CHÚC MỪNG BẠN ĐÃ TỐT NGHIỆP!</h3>
+                               <p className="text-xs font-medium mt-1">Bạn đã vượt qua bài thi cuối khóa và hoàn thành xuất sắc lộ trình môn học này.</p>
+                            </div>
+                         </div>
+                      </div>
+                   )}
+
                    {roadmap.map((lesson, idx) => {
                       const isUnlocked = lesson.session <= currentSessionIndex;
-                      const isCurrent = lesson.session === currentSessionIndex;
+                      // SỬA: Nếu đã tốt nghiệp, không bài nào hiển thị trạng thái "Đang học" nữa
+                      const isCurrent = lesson.session === currentSessionIndex && !isCompleted;
                       
                       return (
                         <div key={idx} className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group transition-all duration-500 ${!isUnlocked ? 'opacity-50 grayscale select-none' : ''}`}>

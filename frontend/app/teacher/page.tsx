@@ -13,7 +13,7 @@ import {
   GraduationCap,
   Info
 } from 'lucide-react';
-import { Toaster, toast } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 
 export default function TeacherPage() {
@@ -96,7 +96,7 @@ export default function TeacherPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-20">
-      <Toaster position="top-center" />
+      
       
       <nav className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-2">

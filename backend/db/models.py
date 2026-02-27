@@ -105,7 +105,7 @@ class QuestionBank(Base):
     __tablename__ = "question_bank"
     id = Column(Integer, primary_key=True, index=True)
     subject = Column(String, index=True)
-    difficulty = Column(String) 
+    difficulty = Column(String, nullable=True) # <-- Đã cập nhật nullable=True
     content = Column(String)
     options = Column(JSON) 
     correct_answer = Column(String)

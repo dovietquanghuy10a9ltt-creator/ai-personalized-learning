@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { Bot, ChevronRight, GraduationCap } from 'lucide-react';
 
 const SUBJECTS = [
@@ -28,6 +28,10 @@ const STORAGE_KEY = 'quiz_auto_save_data';
 const AssessmentForm = () => {
   const [step, setStep] = useState<'select_subject' | 'quiz' | 'result'>('select_subject');
   const [subject, setSubject] = useState("");
+  
+  // Trạng thái lưu thêm tên bài học để hiển thị cho đẹp
+  const [sessionTopic, setSessionTopic] = useState(""); 
+  
   const [questions, setQuestions] = useState<any[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({}); 
   const [loading, setLoading] = useState(false);
@@ -63,6 +67,19 @@ const AssessmentForm = () => {
     }
   };
 
+  // --- AUTO-LOAD QUY TRÌNH KIỂM TRA TỪ URL ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSubject = params.get("subject");
+    const urlTopic = params.get("topic");
+    const urlLevel = params.get("level");
+
+    // Nếu URL có đủ thông tin -> Học sinh đang bấm "Test qua bài" từ trang Adaptive
+    if (urlSubject && urlTopic && urlLevel && step === 'select_subject') {
+      handleStartSessionQuiz(urlSubject, urlTopic, urlLevel);
+    }
+  }, []); // Chỉ chạy 1 lần khi component mount
+
   useEffect(() => {
     const currentUserId = getUserId();
     const savedData = localStorage.getItem(STORAGE_KEY);
@@ -76,6 +93,7 @@ const AssessmentForm = () => {
           setTimer(0);
         } else if (parsed.step === 'quiz' && parsed.questions?.length > 0) {
           setSubject(parsed.subject);
+          setSessionTopic(parsed.sessionTopic || "");
           setQuestions(parsed.questions);
           setAnswers(parsed.answers || {});
           setTimer(parsed.timer || 0);
@@ -92,7 +110,8 @@ const AssessmentForm = () => {
     if (step === 'quiz' && questions.length > 0) {
       const dataToSave = { 
         step: 'quiz', 
-        subject, 
+        subject,
+        sessionTopic,
         questions, 
         answers, 
         timer, 
@@ -100,7 +119,7 @@ const AssessmentForm = () => {
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     }
-  }, [step, subject, questions, answers, timer]);
+  }, [step, subject, sessionTopic, questions, answers, timer]);
 
   useEffect(() => {
     let interval: any;
@@ -122,6 +141,8 @@ const AssessmentForm = () => {
       const handlePopState = () => {
         if (window.confirm("⚠️ CẢNH BÁO: Bạn đang làm bài thi. Nếu thoát, bài làm sẽ bị xóa.")) {
           localStorage.removeItem(STORAGE_KEY);
+          // Xóa param trên URL cho sạch
+          window.history.replaceState(null, "", window.location.pathname);
           setStep('select_subject');
         } else {
           window.history.pushState(null, "", window.location.href);
@@ -147,21 +168,25 @@ const AssessmentForm = () => {
     if (Object.keys(answers).length > 0) {
       if (window.confirm("⚠️ Thoát bây giờ bài làm sẽ bị xóa. Xác nhận thoát?")) {
         localStorage.removeItem(STORAGE_KEY);
+        window.history.replaceState(null, "", window.location.pathname);
         setStep('select_subject');
         setAnswers({});
         setTimer(0);
       }
     } else {
       localStorage.removeItem(STORAGE_KEY);
+      window.history.replaceState(null, "", window.location.pathname);
       setStep('select_subject');
     }
   };
 
+  // --- HÀM TẠO ĐỀ THI ĐÁNH GIÁ ĐẦU VÀO (TỔNG QUÁT) ---
   const handleSelectSubject = async (selectedSub: string) => {
     const userId = getUserId();
     if (!userId) { toast.error("Vui lòng đăng nhập lại."); return; }
 
     setSubject(selectedSub);
+    setSessionTopic(""); // Reset topic về rỗng vì đây là bài tổng quát
     setLoading(true);
     setAnswers({});
     setTimer(0);
@@ -180,10 +205,50 @@ const AssessmentForm = () => {
         setQuestions(res.data.questions);
         setStep('quiz');
         toast.dismiss();
-        toast.success(`Khởi tạo bài kiểm tra môn ${selectedSub}`);
+        toast.success(`Khởi tạo bài kiểm tra đánh giá năng lực môn ${selectedSub}`);
       }
     } catch (error: any) {
       toast.error(getCleanErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- HÀM MỚI: TẠO ĐỀ THI THEO BUỔI HỌC (BÁM SÁT TOPIC VÀ LEVEL) ---
+  const handleStartSessionQuiz = async (urlSubject: string, urlTopic: string, urlLevel: string) => {
+    const userId = getUserId();
+    if (!userId) { toast.error("Vui lòng đăng nhập lại."); return; }
+
+    setSubject(urlSubject);
+    setSessionTopic(urlTopic); // Lưu lại tên bài học để hiển thị UI
+    setLoading(true);
+    setAnswers({});
+    setTimer(0);
+    setResultData(null);
+    setRoadmap(null);
+    setReviewMode(false);
+    setCurrentIndex(0);
+    localStorage.removeItem(STORAGE_KEY);
+
+    try {
+      // Gọi xuống API tạo đề thi cuối buổi chuyên biệt
+      const res = await axios.post("http://localhost:8000/api/assessment/generate-session", { 
+        subject: urlSubject,
+        user_id: userId,
+        session_topic: urlTopic,
+        level: urlLevel
+      });
+      
+      if (res.data.questions && res.data.questions.length > 0) {
+        setQuestions(res.data.questions);
+        setStep('quiz');
+        toast.dismiss();
+        toast.success(`Khởi tạo bài kiểm tra: ${urlTopic}`);
+      }
+    } catch (error: any) {
+      toast.error(getCleanErrorMessage(error));
+      // Báo lỗi thì đẩy về trang chọn môn học
+      setStep('select_subject'); 
     } finally {
       setLoading(false);
     }
@@ -200,7 +265,9 @@ const AssessmentForm = () => {
         question_id: Number(qid),
         selected_option: opt
       })),
-      duration_seconds: timer
+      duration_seconds: timer,
+      // ĐÂY LÀ DÒNG LỆNH FIX LỖI NHẢY LEVEL KHI QUA BÀI:
+      is_session_quiz: sessionTopic !== "" 
     };
 
     try {
@@ -209,6 +276,8 @@ const AssessmentForm = () => {
       await fetchRoadmap(subject); 
       setStep('result');
       localStorage.removeItem(STORAGE_KEY);
+      // Xóa Param sau khi nộp bài để URL sạch sẽ
+      window.history.replaceState(null, "", window.location.pathname);
       toast.success("Nộp bài thành công!");
     } catch (error: any) {
       toast.error(getCleanErrorMessage(error));
@@ -226,7 +295,6 @@ const AssessmentForm = () => {
     if (window.confirm("✅ Xác nhận nộp bài?")) handleSubmit();
   };
 
-  // SỬA: Hàm chuyển sang trang Gia sư AI kèm URL params
   const handleGoToAdaptive = () => {
     window.location.href = `/adaptive?subject=${encodeURIComponent(subject)}&auto_start=true`;
   };
@@ -271,8 +339,10 @@ const AssessmentForm = () => {
                 <div className="flex items-center gap-5">
                   <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl">🏆</div>
                   <div>
-                      <h2 className="text-xl font-black text-gray-800">{subject}</h2>
-                      <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest">
+                      <h2 className="text-xl font-black text-gray-800">
+                        {sessionTopic ? `Qua bài: ${sessionTopic}` : subject}
+                      </h2>
+                      <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest mt-1 inline-block">
                         Trình độ: {resultData.level}
                       </span>
                   </div>
@@ -315,7 +385,10 @@ const AssessmentForm = () => {
                   </div>
                   <div className="flex gap-3">
                       <button onClick={() => { setReviewMode(true); setCurrentIndex(0); }} className="flex-1 py-3 bg-gray-900 text-white rounded-xl font-bold text-xs uppercase hover:bg-black transition-all shadow-lg">🔍 Xem bài giải</button>
-                      <button onClick={() => setStep('select_subject')} className="flex-1 py-3 bg-white text-gray-500 border border-gray-200 rounded-xl font-bold text-xs uppercase hover:bg-gray-50 transition-all">Môn học khác</button>
+                      <button onClick={() => {
+                        window.history.replaceState(null, "", window.location.pathname);
+                        setStep('select_subject');
+                      }} className="flex-1 py-3 bg-white text-gray-500 border border-gray-200 rounded-xl font-bold text-xs uppercase hover:bg-gray-50 transition-all">Môn học khác</button>
                   </div>
                 </div>
             </div>
@@ -362,7 +435,6 @@ const AssessmentForm = () => {
                       
                       {isCurrent && (
                         <div className="mt-4 md:mt-0 w-full md:w-auto flex justify-end items-center gap-3">
-                           {/* SỬA CHỖ NÀY: Gọi handleGoToAdaptive thay vì location rỗng */}
                            <button onClick={handleGoToAdaptive} className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white shadow-md shadow-indigo-200 rounded-xl text-[10px] font-black uppercase transition-all hover:bg-indigo-700">
                              <Bot size={14} /> Học với AI
                            </button>
@@ -384,7 +456,7 @@ const AssessmentForm = () => {
              <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-white">
                 <div>
                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-1">
-                     {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : `BÀI ĐÁNH GIÁ: ${subject}`}
+                     {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : sessionTopic ? `KIỂM TRA BÀI: ${sessionTopic}` : `BÀI ĐÁNH GIÁ: ${subject}`}
                    </span>
                    <span className="text-xs font-bold text-gray-400">CÂU {currentIndex + 1}/{questions.length}</span>
                 </div>

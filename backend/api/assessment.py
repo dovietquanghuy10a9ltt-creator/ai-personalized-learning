@@ -20,6 +20,13 @@ class QuizRequest(BaseModel):
     subject: str 
     user_id: int 
 
+# Thêm Schema cho Bài kiểm tra cuối buổi
+class SessionQuizRequest(BaseModel):
+    subject: str
+    user_id: int
+    session_topic: str  # Tên bài học (VD: "Cấu trúc dữ liệu mảng")
+    level: str          # Trình độ (VD: "Intermediate")
+
 class AnswerSubmission(BaseModel):
     question_id: int
     selected_option: str 
@@ -29,8 +36,9 @@ class SubmitRequest(BaseModel):
     user_id: int 
     answers: List[AnswerSubmission]
     duration_seconds: int = 300 
+    is_session_quiz: bool = False
 
-# --- 1. SINH ĐỀ THI ---
+# --- 1. SINH ĐỀ THI ĐÁNH GIÁ TỔNG QUAN (ĐẦU VÀO) ---
 @router.post("/generate")
 def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
     if not req.subject or req.subject.strip() == "":
@@ -66,7 +74,59 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
         
     return {"questions": questions, "subject": req.subject}
 
-# --- 2. NỘP BÀI, CHẤM ĐIỂM & ĐIỀU HƯỚNG LỘ TRÌNH ---
+# --- 2. TẠO BÀI KIỂM TRA THEO BÁM SÁT BUỔI HỌC VÀ LEVEL ---
+@router.post("/generate-session")
+def generate_session_assessment(req: SessionQuizRequest, db: Session = Depends(get_db)):
+    if not req.subject or not req.session_topic:
+        raise HTTPException(status_code=400, detail="Thiếu thông tin môn học hoặc chủ đề.")
+
+    user = db.query(User).filter(User.id == req.user_id).first()
+    if not user or not user.class_id:
+        raise HTTPException(status_code=400, detail="Người dùng không hợp lệ.")
+
+    # Lấy tài liệu của lớp
+    allowed_docs = db.query(Document).filter(
+        Document.class_id == user.class_id,
+        Document.subject == req.subject
+    ).all()
+    allowed_filenames = [doc.filename for doc in allowed_docs]
+
+    # Gọi Agent tạo đề thi bám sát Topic và Level
+    agent = AdaptiveAgent(db)
+    raw_questions = agent.generate_session_quiz(
+        subject=req.subject,
+        session_topic=req.session_topic,
+        level=req.level,
+        allowed_filenames=allowed_filenames
+    )
+    
+    if not raw_questions:
+        raise HTTPException(status_code=500, detail="AI đang bận, không thể tạo đề thi lúc này. Hãy thử lại!")
+
+    # Lưu câu hỏi AI vừa tạo vào Database để hàm /submit có thể chấm điểm được
+    saved_questions = []
+    for q_data in raw_questions:
+        new_q = QuestionBank(
+            subject=req.subject,
+            content=q_data.get("content", ""),
+            options=json.dumps(q_data.get("options", []), ensure_ascii=False),
+            correct_answer=q_data.get("correct_label", "A"), # Trả về A, B, C, D
+            explanation=q_data.get("explanation", ""),
+            difficulty=req.level # Đánh dấu level của câu hỏi
+        )
+        db.add(new_q)
+        db.commit()
+        db.refresh(new_q)
+        
+        saved_questions.append({
+            "id": new_q.id,
+            "content": new_q.content,
+            "options": q_data.get("options", [])
+        })
+        
+    return {"questions": saved_questions, "subject": req.subject}
+
+# --- 3. NỘP BÀI, CHẤM ĐIỂM & ĐIỀU HƯỚNG LỘ TRÌNH ---
 @router.post("/submit")
 def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     if not req.answers:
@@ -74,6 +134,10 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
 
     user_map = {a.question_id: a.selected_option for a in req.answers}
     question_ids = list(user_map.keys())
+
+    # Lấy Profile cũ để bảo vệ Level nếu đây là bài thi qua buổi
+    profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
+    old_level = profile.current_level if profile else "Beginner"
 
     # 1. Gọi AssessmentAgent chấm điểm
     answers_list = [{"question_id": a.question_id, "selected_option": a.selected_option} for a in req.answers]
@@ -84,8 +148,12 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Lỗi hệ thống: Không thể chấm điểm.")
 
     score_percent = result.get("score", 0) 
-    new_level = result.get("level", "Beginner")
-
+    
+    # LOGIC MỚI: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL MỚI
+    if req.is_session_quiz:
+        new_level = old_level
+    else:
+        new_level = result.get("level", "Beginner")
     # 2. Xử lý chấm điểm chi tiết
     questions_db = db.query(QuestionBank).filter(
         QuestionBank.id.in_(question_ids),
@@ -123,7 +191,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             "correct_label": db_correct_label
         })
 
-    # 3. Điều hướng Lộ trình (BẮT LỖI AI CRASH TẠI ĐÂY)
+    # 3. Điều hướng Lộ trình
     roadmap = db.query(LearningRoadmap).filter_by(user_id=req.user_id, subject=req.subject).first()
     is_passed = True
     msg = ""
@@ -135,7 +203,6 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
 
         adaptive_agent = AdaptiveAgent(db)
         
-        # BỌC LỖI KHÔNG ĐỂ AI LÀM SẬP TIẾN TRÌNH LƯU ĐIỂM
         try:
             adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level=new_level)
             msg = f"Đã thiết lập lộ trình học dựa trên trình độ {new_level} của bạn."
@@ -144,20 +211,24 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             msg = f"Đã ghi nhận điểm số. Đang chờ AI cập nhật lộ trình (Sẽ tự động thử lại sau)."
             
     else:
+        # Nếu đã có Roadmap, cập nhật tiến độ
         roadmap.level_assigned = new_level
-        total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 10
+        total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 11
+        
         if score_percent >= 60.0:
             is_passed = True
             if roadmap.current_session < total_sessions:
                 roadmap.current_session += 1
                 msg = "Chúc mừng! Bạn đã mở khóa bài học tiếp theo."
             else:
-                msg = "Chúc mừng bạn đã hoàn thành lộ trình môn học này!"
+                # KÍCH HOẠT TỐT NGHIỆP NẾU QUA BÀI CUỐI CÙNG
+                roadmap.is_completed = True 
+                msg = "🎉 XUẤT SẮC! Bạn đã vượt qua bài kiểm tra cuối khóa và chính thức HOÀN THÀNH môn học này!"
         else:
             is_passed = False
-            msg = "Điểm chưa đạt (cần tối thiểu 60%). Hãy ôn tập lại nhé!"
+            msg = "Điểm chưa đạt (cần tối thiểu 60%). Hãy ôn tập lại toàn bộ kiến thức và thử lại nhé!"
 
-    # 4. Lưu Lịch sử bài làm (Bây giờ chắc chắn sẽ chạy tới đây)
+    # 4. Lưu Lịch sử bài làm
     history = AssessmentHistory(
         subject=req.subject,
         user_id=req.user_id, 
@@ -171,7 +242,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     )
     db.add(history)
 
-    # 5. Cập nhật thống kê LearnerProfile (THÊM LỆNH ELSE ĐỂ TẠO MỚI)
+    # 5. Cập nhật thống kê LearnerProfile
     profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
     
     if profile:
@@ -180,7 +251,6 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         profile.avg_score = ((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests
         profile.current_level = new_level
     else:
-        # HỌC SINH MỚI THI LẦN ĐẦU TIÊN SẼ ĐƯỢC TẠO MỚI PROFILE
         new_profile = LearnerProfile(
             user_id=req.user_id,
             subject=req.subject,
@@ -202,18 +272,27 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         "message": msg
     }
 
-# --- CÁC API TRUY VẤN LỊCH SỬ VÀ ROADMAP GIỮ NGUYÊN ---
+# --- CÁC API TRUY VẤN LỊCH SỬ VÀ ROADMAP ---
 @router.get("/roadmap/{subject}")
 def get_learning_roadmap(subject: str, user_id: int, db: Session = Depends(get_db)):
     roadmap = db.query(LearningRoadmap).filter_by(subject=subject, user_id=user_id).first()
     if not roadmap:
         return {"has_roadmap": False}
-    total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 10
-    progress = (roadmap.current_session / total_sessions) * 100 if total_sessions > 0 else 0
+        
+    # FIX: Đổi thành 11 bài để tính tiến độ chuẩn
+    total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 11
+    
+    # FIX: Tính toán lại progress cho chuẩn (Nếu tốt nghiệp thì là 100%)
+    if roadmap.is_completed:
+        progress = 100
+    else:
+        progress = ((roadmap.current_session - 1) / total_sessions) * 100 if total_sessions > 0 else 0
+        
     return {
         "has_roadmap": True,
         "level_assigned": roadmap.level_assigned,
         "current_session": roadmap.current_session,
+        "is_completed": roadmap.is_completed,
         "roadmap_data": roadmap.roadmap_data, 
         "progress_percent": progress 
     }

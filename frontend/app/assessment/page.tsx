@@ -3,13 +3,13 @@
 
 import React from 'react';
 import AssessmentForm from '@/components/AssessmentForm'; 
-import { Toaster } from 'react-hot-toast';
+// ĐÃ XÓA: import { Toaster } from 'react-hot-toast';
 
 export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       
-      <Toaster position="top-center" />
+      {/* ĐÃ XÓA: <Toaster position="top-center" /> */}
 
       <div className="container mx-auto px-4">
         {/* 2. Phần tiêu đề trang */}

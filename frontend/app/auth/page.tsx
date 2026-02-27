@@ -14,7 +14,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import axios from 'axios';
-import { toast, Toaster } from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -72,7 +72,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6 font-sans relative overflow-hidden">
-      <Toaster position="top-center" />
+      
       
       {/* Nút quay lại trang chủ */}
       <Link 
