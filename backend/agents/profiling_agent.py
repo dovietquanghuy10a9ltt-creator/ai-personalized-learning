@@ -21,8 +21,7 @@ class ProfilingAgent:
 
     def classify_learner(self, correct_count: int, total_questions: int, subject: str, user_id: int):
         """
-        Đánh giá và phân loại năng lực học viên dựa trên kết quả bài test đầu vào.
-        Áp dụng luật: < 40% Beginner, 40-70% Intermediate, > 70% Advanced.
+        Đánh giá và phân loại năng lực học viên dựa trên kết quả bài test đầu vào..
         """
         if total_questions == 0:
             return "Beginner"

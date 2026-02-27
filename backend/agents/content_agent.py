@@ -173,6 +173,8 @@ class ContentAgent:
         if file_ext == ".docx": return Docx2txtLoader(file_path)
         if file_ext == ".pptx": return CustomPPTXLoader(file_path)
         return None
+    
+    
 
 # Khởi tạo instance
 content_agent = ContentAgent()

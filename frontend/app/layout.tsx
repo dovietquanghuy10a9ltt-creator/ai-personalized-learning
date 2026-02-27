@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import { Toaster } from "react-hot-toast"; // Import Toaster dùng chung
+import { Toaster } from "react-hot-toast"; 
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </main>
 
-        {/* Thông báo Global: Đặt ở đây thì mọi trang đều gọi được toast.success() */}
+        {/* Thông báo Global */}
         <Toaster 
           position="top-center" 
           reverseOrder={false} 

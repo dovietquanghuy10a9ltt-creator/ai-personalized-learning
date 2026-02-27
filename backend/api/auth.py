@@ -77,7 +77,7 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "role": user.role,
         "fullname": user.full_name,
-        "userId": user.id # Dòng này giúp fix lỗi tạo lớp học
+        "userId": user.id 
     }
 
 # --- API LẤY THÔNG TIN NGƯỜI DÙNG & LỚP HỌC ---

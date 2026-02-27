@@ -245,7 +245,7 @@ export default function ClassMembersPage() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
                       <XAxis dataKey="name" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} />
                       
-                      {/* ĐÃ VIỆT HÓA CHỮ "VALUE" THÀNH "HỌC SINH" Ở ĐÂY */}
+                      
                       <RechartsTooltip 
                         formatter={(value: any) => [value, 'Học sinh']} 
                         cursor={{fill: '#f8fafc'}} 
@@ -278,7 +278,7 @@ export default function ClassMembersPage() {
                           })}
                         </Pie>
                         
-                        {/* ĐÃ VIỆT HÓA CHỮ "VALUE" THÀNH "HỌC SINH" Ở ĐÂY */}
+                        
                         <RechartsTooltip 
                           formatter={(value: any) => [value, 'Học sinh']}
                           contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
@@ -310,7 +310,7 @@ export default function ClassMembersPage() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
                       <XAxis dataKey="date" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} />
                       
-                      {/* ĐÃ VIỆT HÓA CHỮ "MINUTES" THÀNH "THỜI LƯỢNG (PHÚT)" Ở ĐÂY */}
+                      
                       <RechartsTooltip 
                         formatter={(value: any) => [`${value} phút`, 'Thời lượng']}
                         cursor={{fill: '#fff1f2'}} 

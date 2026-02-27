@@ -40,9 +40,7 @@ export default function AdaptiveLearningPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // =========================================================================
   // CƠ CHẾ TỰ ĐỘNG KHỞI TẠO TỪ URL (AUTO-LOAD)
-  // =========================================================================
   useEffect(() => {
     const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
     if (id) {
@@ -81,7 +79,7 @@ export default function AdaptiveLearningPage() {
          setCurrentSessionIndex(currentSess); 
          setLearnerLevel(res.data.level_assigned.toUpperCase());
          
-         // THÊM: Cập nhật biến Tốt nghiệp từ Backend gửi lên
+         //Cập nhật biến Tốt nghiệp từ Backend gửi lên
          setIsCompleted(res.data.is_completed);
          
          if (autoStart && loadedRoadmap.length > 0) {
@@ -306,7 +304,7 @@ export default function AdaptiveLearningPage() {
                       </span>
                    </div>
 
-                   {/* THÊM: BANNER TỐT NGHIỆP HIỂN THỊ KHI isCompleted = true */}
+                   {/* BANNER TỐT NGHIỆP HIỂN THỊ KHI isCompleted = true */}
                    {isCompleted && (
                       <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-5 rounded-2xl mb-6 flex items-center justify-between shadow-sm relative z-10 animate-in fade-in zoom-in">
                          <div className="flex items-center gap-4">
@@ -321,7 +319,7 @@ export default function AdaptiveLearningPage() {
 
                    {roadmap.map((lesson, idx) => {
                       const isUnlocked = lesson.session <= currentSessionIndex;
-                      // SỬA: Nếu đã tốt nghiệp, không bài nào hiển thị trạng thái "Đang học" nữa
+                      //Nếu đã tốt nghiệp, không bài nào hiển thị trạng thái "Đang học" nữa
                       const isCurrent = lesson.session === currentSessionIndex && !isCompleted;
                       
                       return (

@@ -31,6 +31,5 @@ def add_documents_to_db(docs):
     vector_store = get_vector_store()
     
     # Đảm bảo mỗi doc đều có metadata source là tên file để sau này xóa được
-    # (Bước này thường được xử lý ở Processor, nhưng thêm ở đây cho chắc chắn)
     vector_store.add_documents(docs)
     print(f"✅ Đã lưu {len(docs)} đoạn văn vào ChromaDB (Collection: {COLLECTION_NAME}).")

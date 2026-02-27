@@ -1,15 +1,12 @@
-// frontend/app/assessment/page.tsx
 "use client";
 
 import React from 'react';
 import AssessmentForm from '@/components/AssessmentForm'; 
-// ĐÃ XÓA: import { Toaster } from 'react-hot-toast';
 
 export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       
-      {/* ĐÃ XÓA: <Toaster position="top-center" /> */}
 
       <div className="container mx-auto px-4">
         {/* 2. Phần tiêu đề trang */}

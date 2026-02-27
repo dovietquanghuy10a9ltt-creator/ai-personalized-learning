@@ -12,7 +12,6 @@ load_dotenv()
 class AdaptiveAgent:
     def __init__(self, db: Session):
         self.db = db
-        # Sử dụng key ADAPTIVE như bạn đã cấu hình
         self.api_key = os.getenv("GROQ_KEY_ADAPTIVE")
         if not self.api_key:
             raise ValueError("Cần cấu hình GROQ_KEY_ADAPTIVE trong file .env")
@@ -47,9 +46,7 @@ class AdaptiveAgent:
             except Exception as e:
                 print(f"⚠️ Lỗi trích xuất chủ đề: {e}")
 
-        # =================================================================
-        # 3. PROMPT THIẾT KẾ LỘ TRÌNH (BẢN UPDATE: THÊM BÀI CUỐI KHÓA)
-        # =================================================================
+        # 3. PROMPT THIẾT KẾ LỘ TRÌNH
         prompt = f"""
         BẠN LÀ CHUYÊN GIA THIẾT KẾ CHƯƠNG TRÌNH HỌC (CURRICULUM ARCHITECT).
         
@@ -173,9 +170,7 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
         except Exception as e:
             return f"❌ Gia sư AI đang bận truy xuất dữ liệu: {str(e)}"
 
-    # =========================================================================
-    # BẢN UPDATE: TẠO BÀI KIỂM TRA THÔNG MINH (THƯỜNG 10 CÂU, CUỐI KHÓA 20 CÂU)
-    # =========================================================================
+    #TẠO BÀI KIỂM TRA THÔNG MINH (THƯỜNG 10 CÂU, CUỐI KHÓA 20 CÂU)
     def generate_session_quiz(self, subject: str, session_topic: str, level: str, allowed_filenames: list = None):
         """
         Tạo bài kiểm tra cuối buổi HOẶC cuối khóa.

@@ -53,7 +53,6 @@ def join_classroom(student_id: int, class_id: int, db: Session = Depends(get_db)
     db.commit()
     return {"message": "Tham gia lớp học thành công"}
 
-# Mở file backend/api/classroom.py và thêm đoạn này vào cuối
 
 @router.get("/members/{class_id}")
 def get_class_members(class_id: int, db: Session = Depends(get_db)):
@@ -83,7 +82,7 @@ def remove_student_from_class(student_id: int, db: Session = Depends(get_db)):
     if student.role != "student":
          raise HTTPException(status_code=400, detail="Chỉ có thể xóa học sinh khỏi lớp")
     
-    # "Đuổi" khỏi lớp bằng cách xóa liên kết class_id
+    # Xóa khỏi lớp bằng cách xóa liên kết class_id
     student.class_id = None 
     db.commit()
     

@@ -51,7 +51,6 @@ export default function EvaluationPage() {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // --- SỬA LỖI TẠI ĐÂY: Quét đúng biến ID và tuyệt đối KHÔNG gán mặc định số 2 ---
       const storedId = localStorage.getItem('userId') || localStorage.getItem('user_id');
       const userId = storedId ? parseInt(storedId, 10) : null;
 
@@ -66,7 +65,7 @@ export default function EvaluationPage() {
 
       const res = await axios.get(`http://localhost:8000/api/stats/learning-stats`, {
         params: {
-          user_id: userId, // Lúc này userId chắc chắn là ID của người đang đăng nhập (VD: 3)
+          user_id: userId, 
           subject: selectedSubject
         }
       });
@@ -114,7 +113,7 @@ export default function EvaluationPage() {
 
   const formatDuration = (val: string | number): string => {
     if (!val) return "0 giây";
-    if (typeof val === 'string') return val; // Nếu backend gửi "1p 30s"
+    if (typeof val === 'string') return val; 
     
     const numVal = Number(val);
     const m = Math.floor(numVal / 60);

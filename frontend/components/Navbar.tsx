@@ -10,8 +10,8 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
-  Users,       // Thêm icon cho Quản lý lớp
-  BookOpen     // Thêm icon cho Tài liệu
+  Users,       
+  BookOpen     
 } from 'lucide-react';
 import clsx from 'clsx';
 

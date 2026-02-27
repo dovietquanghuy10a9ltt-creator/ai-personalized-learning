@@ -149,7 +149,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
 
     score_percent = result.get("score", 0) 
     
-    # LOGIC MỚI: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL MỚI
+    # LOGIC: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL MỚI
     if req.is_session_quiz:
         new_level = old_level
     else:
@@ -279,10 +279,8 @@ def get_learning_roadmap(subject: str, user_id: int, db: Session = Depends(get_d
     if not roadmap:
         return {"has_roadmap": False}
         
-    # FIX: Đổi thành 11 bài để tính tiến độ chuẩn
     total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 11
     
-    # FIX: Tính toán lại progress cho chuẩn (Nếu tốt nghiệp thì là 100%)
     if roadmap.is_completed:
         progress = 100
     else:

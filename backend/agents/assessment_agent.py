@@ -55,7 +55,7 @@ class AssessmentAgent:
                 ).delete(synchronize_session=False)
                 self.db.commit()
 
-        # --- BƯỚC 2: XÁC ĐỊNH TRÌNH ĐỘ CÁ NHÂN (SỬA LỖI XỌ NGƯỜI NÀY SANG NGƯỜI KIA) ---
+        # --- BƯỚC 2: XÁC ĐỊNH TRÌNH ĐỘ CÁ NHÂN ---
         # Phải lọc theo cả subject VÀ user_id
         profile = self.db.query(LearnerProfile).filter_by(subject=subject, user_id=user_id).first()
         current_level = profile.current_level if profile else "Beginner"

@@ -49,7 +49,7 @@ export default function TeacherPage() {
       const data = res.data;
       setClasses(data);
       
-      // Tự động chọn lớp đầu tiên nếu chưa chọn lớp nào
+
       if (data.length > 0 && !selectedClassId) {
         setSelectedClassId(data[0].id);
         setSelectedClassName(data[0].name);

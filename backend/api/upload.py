@@ -39,13 +39,13 @@ async def analyze_document_subject(file: UploadFile = File(...)):
         if os.path.exists(file_path):
             os.remove(file_path)
 
-# --- API 2: UPLOAD VÀ LƯU DATABASE (ĐÃ CẬP NHẬT GẮN LỚP HỌC) ---
+# --- API 2: UPLOAD VÀ LƯU DATABASE ---
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
     manual_subject: Optional[str] = Form(None),
     teacher_id: Optional[int] = Form(None),
-    class_id: Optional[int] = Form(None), # <--- THÊM class_id để phân loại theo lớp
+    class_id: Optional[int] = Form(None), 
     db: Session = Depends(get_db)
 ):
     validate_file_extension(file.filename)

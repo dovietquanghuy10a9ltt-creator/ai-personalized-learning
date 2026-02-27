@@ -36,7 +36,7 @@ class EvaluationAgent:
             if not question:
                 continue
 
-            # Lấy đáp án đúng từ DB (Ví dụ: "A. Mạng cục bộ...")
+            # Lấy đáp án đúng từ DB 
             correct_full = question.correct_answer 
             
             # --- LOGIC XỬ LÝ CHUỖI ĐỂ SO SÁNH ---
@@ -69,8 +69,6 @@ class EvaluationAgent:
         Đánh giá kết quả học tập dựa trên trọng số điểm số, nỗ lực và sự tiến bộ.
         """
         
-        # 1. Tính Effort Score (Điểm nỗ lực)
-        # Giả định: Thời gian chuẩn là 300s. Điểm nỗ lực tối đa là 100.
         effort_score = min(100, (time_spent_seconds / 300) * 100)
         
         # 2. Tính Progress Score (Điểm tiến bộ)

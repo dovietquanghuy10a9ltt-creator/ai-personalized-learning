@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # --- IMPORT DATABASE VÀ MODELS ---
 from db import models
 from db.database import engine
 
 # --- IMPORT CÁC ROUTER API ---
-# Đã thêm 'classroom' vào danh sách import
 from api import assessment, upload, adaptive, stats, auth, classroom 
 
 # Tự động tạo bảng nếu chưa có 
@@ -30,7 +30,6 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 
 # 1. Classroom (Xử lý Tạo lớp, Tham gia lớp, Lấy danh sách lớp)
-# Đây là router giúp giải quyết lỗi khi bạn nhấn nút "Tạo lớp" ở Frontend
 app.include_router(classroom.router, prefix="/api/classroom", tags=["Classroom"])
 
 # 2. Assessment
@@ -44,6 +43,7 @@ app.include_router(adaptive.router, prefix="/api/adaptive", tags=["AI Tutor"])
 
 # 5. Stats
 app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
+
 
 @app.get("/")
 def read_root():

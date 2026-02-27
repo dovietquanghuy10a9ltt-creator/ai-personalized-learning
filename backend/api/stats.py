@@ -8,9 +8,7 @@ from db.models import AssessmentHistory, LearnerProfile, User
 
 router = APIRouter()
 
-# ==========================================================
 # 1. API THỐNG KÊ CÁ NHÂN (HỌC SINH XEM HOẶC GIÁO VIÊN XEM CHI TIẾT)
-# ==========================================================
 @router.get("/learning-stats")
 async def get_stats(
     user_id: Optional[int] = Query(None), 
@@ -82,9 +80,7 @@ async def get_stats(
     }
 
 
-# ==========================================================
 # 2. API THỐNG KÊ TỔNG QUAN LỚP HỌC (CHO GIÁO VIÊN)
-# ==========================================================
 @router.get("/class/{class_id}")
 def get_class_analytics(
     class_id: int, 

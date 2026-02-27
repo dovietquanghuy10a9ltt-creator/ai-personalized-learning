@@ -15,7 +15,7 @@ class TutorChatRequest(BaseModel):
     message: str
     roadmap_context: str 
     user_id: int 
-    history: List[Dict[str, str]] = [] # THÊM TRƯỜNG NHẬN LỊCH SỬ TỪ FRONTEND
+    history: List[Dict[str, str]] = [] #NHẬN LỊCH SỬ TỪ FRONTEND
 
 # --- TẠO CHƯƠNG TRÌNH HỌC (10 BUỔI THEO TÀI LIỆU LỚP) ---
 @router.get("/recommend/{subject}")
