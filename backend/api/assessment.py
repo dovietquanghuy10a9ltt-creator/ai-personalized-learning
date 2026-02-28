@@ -48,6 +48,17 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
     if not user or not user.class_id:
         raise HTTPException(status_code=400, detail="Người dùng không tồn tại hoặc chưa tham gia lớp học.")
 
+    # ==============================================================
+    # CHẶN LÀM LẠI BÀI THI: Kiểm tra xem đã có Lộ trình học chưa
+    # ==============================================================
+    existing_roadmap = db.query(LearningRoadmap).filter_by(user_id=req.user_id, subject=req.subject).first()
+    if existing_roadmap:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Bạn đã hoàn thành bài đánh giá năng lực môn '{req.subject}'. Vui lòng vào mục Lộ trình để bắt đầu học!"
+        )
+
+    # Lấy tài liệu nếu chưa thi
     allowed_docs = db.query(Document).filter(
         Document.class_id == user.class_id,
         Document.subject == req.subject
