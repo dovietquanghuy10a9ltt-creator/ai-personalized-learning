@@ -139,7 +139,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
     old_level = profile.current_level if profile else "Beginner"
 
-    # 1. Gọi AssessmentAgent chấm điểm
+    # 1. Gọi AssessmentAgent chấm điểm (Giữ lại để agent lưu log hoặc ghi nhận lịch sử nội bộ nếu cần)
     answers_list = [{"question_id": a.question_id, "selected_option": a.selected_option} for a in req.answers]
     agent = AssessmentAgent(db)
     result = agent.submit_assessment(req.user_id, req.subject, answers_list)
@@ -147,14 +147,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     if not result:
         raise HTTPException(status_code=500, detail="Lỗi hệ thống: Không thể chấm điểm.")
 
-    score_percent = result.get("score", 0) 
-    
-    # LOGIC: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL MỚI
-    if req.is_session_quiz:
-        new_level = old_level
-    else:
-        new_level = result.get("level", "Beginner")
-    # 2. Xử lý chấm điểm chi tiết
+    # 2. Xử lý chấm điểm chi tiết (Đếm số câu đúng thật chính xác từ Database)
     questions_db = db.query(QuestionBank).filter(
         QuestionBank.id.in_(question_ids),
         QuestionBank.subject == req.subject 
@@ -191,7 +184,23 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             "correct_label": db_correct_label
         })
 
-    # 3. Điều hướng Lộ trình
+    # TÍNH LẠI CHUẨN XÁC SỐ ĐIỂM TỪ ĐÁP ÁN ĐÃ CHECK
+    total_q = len(questions_db)
+    score_percent = round((correct_count / total_q * 100), 2) if total_q > 0 else 0.0
+
+    # ==============================================================
+    # 3. GỌI PROFILING AGENT ĐỂ CHỐT LEVEL THEO TOÁN HỌC (ĐÃ FIX)
+    # ==============================================================
+    profiler = ProfilingAgent(db)
+    calculated_level = profiler.classify_learner(correct_count, total_q, req.subject, req.user_id)
+
+    # LOGIC: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL TỪ TOÁN HỌC
+    if req.is_session_quiz:
+        new_level = old_level
+    else:
+        new_level = calculated_level
+
+    # 4. Điều hướng Lộ trình
     roadmap = db.query(LearningRoadmap).filter_by(user_id=req.user_id, subject=req.subject).first()
     is_passed = True
     msg = ""
@@ -204,6 +213,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         adaptive_agent = AdaptiveAgent(db)
         
         try:
+            # ÉP CON AI VẼ ROADMAP THEO ĐÚNG LEVEL ĐÃ TÍNH TOÁN (new_level)
             adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level=new_level)
             msg = f"Đã thiết lập lộ trình học dựa trên trình độ {new_level} của bạn."
         except Exception as e:
@@ -228,7 +238,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             is_passed = False
             msg = "Điểm chưa đạt (cần tối thiểu 60%). Hãy ôn tập lại toàn bộ kiến thức và thử lại nhé!"
 
-    # 4. Lưu Lịch sử bài làm
+    # 5. Lưu Lịch sử bài làm
     history = AssessmentHistory(
         subject=req.subject,
         user_id=req.user_id, 
@@ -236,19 +246,19 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         level_at_time=new_level,
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
-        total_questions=len(questions_db),
+        total_questions=total_q,
         wrong_detail=json.dumps(wrong_questions_log, ensure_ascii=False),
         timestamp=datetime.utcnow()
     )
     db.add(history)
 
-    # 5. Cập nhật thống kê LearnerProfile
+    # 6. Cập nhật thống kê LearnerProfile
     profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
     
     if profile:
         prev_avg = profile.avg_score if profile.avg_score else 0.0
         profile.total_tests = (profile.total_tests or 0) + 1
-        profile.avg_score = ((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests
+        profile.avg_score = round(((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests, 2)
         profile.current_level = new_level
     else:
         new_profile = LearnerProfile(
@@ -266,7 +276,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         "level": new_level, 
         "score": score_percent, 
         "correct_count": correct_count,
-        "total_questions": len(questions_db),
+        "total_questions": total_q,
         "results": detailed_results,
         "is_passed": is_passed,
         "message": msg

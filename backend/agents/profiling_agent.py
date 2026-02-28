@@ -21,24 +21,23 @@ class ProfilingAgent:
     def classify_learner(self, correct_count: int, total_questions: int, subject: str, user_id: int):
         """
         Đánh giá và phân loại năng lực học viên dựa trên kết quả bài test đầu vào.
-        Sử dụng Rule-based (Luật cứng) để đảm bảo độ chính xác tuyệt đối.
         """
         if total_questions == 0:
             return "Beginner"
 
-        score_percent = (correct_count / total_questions) * 100
+        # Tính toán phần trăm và làm tròn đến 2 chữ số thập phân để tránh sai số float
+        score_percent = round((correct_count / total_questions) * 100, 2)
         
-        # 1. PHÂN LOẠI DỰA TRÊN LUẬT CỨNG (Rule-based)
-        if score_percent < 40:
-            base_level = "Beginner"
-        elif 40 <= score_percent <= 70:
+        # 1. PHÂN LOẠI DỰA TRÊN LUẬT CỨNG (Rule-based) - ƯU TIÊN NGƯỠNG CAO TRƯỚC
+        if score_percent > 70:
+            base_level = "Advanced"
+        elif score_percent >= 40: 
             base_level = "Intermediate"
         else:
-            base_level = "Advanced"
+            base_level = "Beginner"
 
-        # 2. LẤY HỒ SƠ ĐỂ KIỂM TRA
+        # 2. KIỂM TRA HỒ SƠ (Để đảm bảo tính nhất quán dữ liệu)
+        # Lưu ý: Chỉ lấy thông tin, không dùng để thay đổi base_level ở bước này
         profile = self.db.query(LearnerProfile).filter_by(subject=subject, user_id=user_id).first()
-        avg_score = profile.avg_score if profile else score_percent
         
-        # 3. TRẢ VỀ TRỰC TIẾP KẾT QUẢ TỪ TOÁN HỌC
         return base_level
