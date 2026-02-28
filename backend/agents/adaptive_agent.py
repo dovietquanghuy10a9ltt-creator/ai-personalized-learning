@@ -22,23 +22,30 @@ class AdaptiveAgent:
         # Kết nối tới Vector Database (ChromaDB)
         self.vector_store = get_vector_store()
 
+    # ==========================================
+    # 1. HÀM SINH LỘ TRÌNH HỌC (ROADMAP)
+    # ==========================================
     def generate_overall_roadmap(self, user_id: int, subject: str, allowed_filenames: list = None, force_level: str = None):
-        """
-        Dựa vào tài liệu giáo viên và trình độ học sinh để tạo 11 buổi (10 kiến thức + 1 thi cuối khóa).
-        """
         # 1. Xác định trình độ
         current_level = force_level
         if not current_level:
             profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
             current_level = profile.current_level if profile else "Beginner"
 
-        # 2. CONTENT AGENT: Trích xuất nội dung thực tế từ tài liệu
+        # 2. RAG ĐỘNG: LẤY TÀI LIỆU TRỌNG TÂM THEO TRÌNH ĐỘ
         context_summary = ""
         if allowed_filenames:
             try:
-                # Tìm kiếm các đoạn nội dung mang tính chất tổng quan/mục lục
+                # Tìm kiếm thay đổi tùy vào Level để tránh lấy lại Mục lục cơ bản
+                if current_level == "Advanced":
+                    search_query = f"Kiến thức nâng cao, chuyên sâu, thiết kế hệ thống, bảo mật, tối ưu hóa, giao thức phức tạp của môn {subject}"
+                elif current_level == "Intermediate":
+                    search_query = f"Kiến thức vận dụng, các mô hình thực tế, thuật toán, cấu trúc chi tiết của môn {subject}"
+                else:
+                    search_query = f"Mục lục, giới thiệu, các khái niệm cơ bản, tổng quan của môn {subject}"
+
                 docs = self.vector_store.similarity_search(
-                    f"Mục lục, các chương, kiến thức cốt lõi và nâng cao của môn {subject}", 
+                    search_query, 
                     k=15, 
                     filter={"source": {"$in": allowed_filenames}}
                 )
@@ -53,33 +60,33 @@ class AdaptiveAgent:
         MÔN HỌC: {subject}
         TRÌNH ĐỘ HỌC VIÊN HIỆN TẠI: {current_level.upper()}
         
-        TÀI LIỆU GIÁO VIÊN (NGUỒN THAM KHẢO):
+        TÀI LIỆU GIÁO VIÊN (NGUỒN THAM KHẢO DÀNH RIÊNG CHO TRÌNH ĐỘ NÀY):
         {context_summary if context_summary else "Không có tài liệu."}
 
-        [CHIẾN LƯỢC LỌC NỘI DUNG CỰC KỲ NGHIÊM NGẶT]:
-        Bạn PHẢI tạo ra ĐÚNG 11 SESSIONS (Gồm 10 Buổi học + 1 Buổi Thi Chốt Khóa) theo luật sau:
-        
-        - TỪ SESSION 1 ĐẾN 10 (DẠY KIẾN THỨC):
-          + NẾU LÀ BEGINNER: Bắt đầu từ số 0 (Giới thiệu, khái niệm cơ bản nhất, cú pháp cơ sở).
-          + NẾU LÀ INTERMEDIATE: Bỏ qua hoàn toàn bài cơ bản (Giới thiệu, Biến). Buổi 1 PHẢI BẮT ĐẦU từ kiến thức trung cấp (Ví dụ: Mảng, Chuỗi, Cấu trúc dữ liệu, OOP).
-          + NẾU LÀ ADVANCED: Bỏ qua mọi lý thuyết nền. Bắt đầu ngay vào kiến trúc phức tạp, thiết kế hệ thống, tối ưu hóa.
-        
-        - SESSION 11 (BẮT BUỘC KHÔNG ĐƯỢC THIẾU): 
-          + "session": 11
-          + "topic": "KIỂM TRA TỔNG HỢP CUỐI KHÓA"
-          + "description": "Bài kiểm tra cuối cùng đánh giá toàn diện tất cả kiến thức bạn đã học trong toàn bộ lộ trình."
-          + "focus_level": "{current_level}"
+        [CHIẾN LƯỢC ÉP KIỂU THEO TRÌNH ĐỘ - TUYỆT ĐỐI TUÂN THỦ]:
+        Học viên đang ở trình độ **{current_level.upper()}**. Bạn PHẢI thiết kế ĐÚNG 11 SESSIONS (10 học + 1 thi).
+
+        QUY TẮC NỘI DUNG TỪ SESSION 1 ĐẾN 10 (Lệnh sống còn):
+        - NẾU LEVEL BEGINNER: Dạy tuần tự từ đầu tài liệu. Bắt đầu bằng Giới thiệu, Khái niệm, Phân loại.
+        - NẾU LEVEL INTERMEDIATE: KHÔNG dạy bài Giới thiệu/Tổng quan. Bắt đầu ngay từ kiến thức vận dụng thực tế.
+        - NẾU LEVEL ADVANCED: 
+          1. BỎ QUA HOÀN TOÀN 50% nội dung đầu tiên của môn học.
+          2. NGHIÊM CẤM đưa vào lộ trình các bài có chữ: "Giới thiệu", "Tổng quan", "Cơ bản" (Cấm dạy lại LAN/WAN/WiFi cơ bản).
+          3. BẮT BUỘC 10 buổi học phải là các kiến thức KHÓ NHẤT, CHUYÊN SÂU NHẤT được trích xuất từ tài liệu ở trên.
+
+        QUY TẮC SESSION 11: 
+        - Bắt buộc là: {{"session": 11, "topic": "KIỂM TRA TỔNG HỢP CUỐI KHÓA", "description": "Bài thi đánh giá toàn diện...", "focus_level": "{current_level.upper()}"}}
 
         [YÊU CẦU ĐẦU RA JSON]:
-        Bạn PHẢI phân tích chiến lược của mình vào trường "strategy" TRƯỚC KHI tạo mảng "roadmap" đủ 11 items.
+        Bạn PHẢI viết chiến lược vào trường "strategy" (Ghi rõ bạn đã loại bỏ những kiến thức cơ bản nào) TRƯỚC KHI tạo mảng "roadmap".
         {{
-            "strategy": "Viết 1 câu giải thích lý do...",
+            "strategy": "Tôi đã loại bỏ các bài... và tập trung vào các kiến thức chuyên sâu như... vì học viên là Advanced.",
             "roadmap": [
                 {{
                     "session": 1,
                     "topic": "Tên bài học...",
                     "description": "Mô tả chi tiết...",
-                    "focus_level": "{current_level}"
+                    "focus_level": "{current_level.upper()}"
                 }}
             ]
         }}
@@ -118,10 +125,10 @@ class AdaptiveAgent:
             self.db.rollback()
             return []
 
+    # ==========================================
+    # 2. HÀM GIA SƯ AI CHAT (Không đổi)
+    # ==========================================
     def chat_with_tutor(self, subject: str, user_message: str, roadmap_context: str, allowed_filenames: list = None, history: list = None):
-        """
-        Gia sư AI theo phương pháp Socrates.
-        """
         if history is None:
             history = []
             
@@ -170,11 +177,10 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
         except Exception as e:
             return f"❌ Gia sư AI đang bận truy xuất dữ liệu: {str(e)}"
 
-    #TẠO BÀI KIỂM TRA THÔNG MINH (THƯỜNG 10 CÂU, CUỐI KHÓA 20 CÂU)
+    # ==========================================
+    # 3. HÀM SINH CÂU HỎI TRẮC NGHIỆM
+    # ==========================================
     def generate_session_quiz(self, subject: str, session_topic: str, level: str, allowed_filenames: list = None):
-        """
-        Tạo bài kiểm tra cuối buổi HOẶC cuối khóa.
-        """
         context_docs = ""
         search_filter = {"subject": {"$eq": subject}}
         if allowed_filenames:
@@ -185,22 +191,18 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
                 ]
             }
 
-        # KIỂM TRA XEM ĐÂY LÀ BÀI THƯỜNG HAY BÀI CUỐI KHÓA DỰA TRÊN TOPIC
         is_final_exam = "CUỐI KHÓA" in session_topic.upper() or "TỔNG HỢP" in session_topic.upper()
 
         if is_final_exam:
-            # RAG quét toàn bộ nội dung trọng tâm
             search_query = f"Toàn bộ kiến thức trọng tâm, các chương và khái niệm quan trọng nhất của môn {subject}"
             topic_instruction = f"- Chủ đề kiểm tra: TỔNG ÔN CUỐI KHÓA (Hãy ra câu hỏi bao quát ngẫu nhiên TOÀN BỘ các chương của môn học, đánh giá toàn diện)."
-            num_questions = 20 # BÀI CUỐI KHÓA PHẢI THI 20 CÂU
+            num_questions = 20
         else:
-            # RAG quét đúng 1 bài
             search_query = f"Kiến thức chi tiết về {session_topic} trong môn {subject}"
             topic_instruction = f"- Chủ đề đang kiểm tra: {session_topic} (TUYỆT ĐỐI CHỈ HỎI KIẾN THỨC TRONG CHỦ ĐỀ NÀY)."
-            num_questions = 10 # BÀI THƯỜNG QUA CỬA 10 CÂU
+            num_questions = 10
 
         try:
-            # Tăng k=15 để lấy được lượng lớn text làm đề tổng hợp/đề dài
             docs = self.vector_store.similarity_search(search_query, k=15, filter=search_filter)
             context_docs = "\n\n".join([doc.page_content for doc in docs])
         except Exception as e:
@@ -236,9 +238,8 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
                     "content": "Nội dung câu hỏi ở mức độ {level.upper()}...",
                     "options": ["A. Đáp án 1", "B. Đáp án 2", "C. Đáp án 3", "D. Đáp án 4"],
                     "correct_label": "A", 
-                    "explanation": "Giải thích chi tiết TẠI SAO đáp án này đúng tuyệt đối và các đáp án khác sai dựa trên tài liệu."
+                    "explanation": "Giải thích chi tiết TẠI SAO đáp án này đúng..."
                 }}
-                // Lặp lại đủ {num_questions} câu
             ]
         }}
         """
@@ -246,7 +247,7 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a strict examiner. You MUST follow the requested level, topic, and output exactly the requested number of questions in JSON."},
+                    {"role": "system", "content": "You are a strict examiner. You MUST output exactly the requested number of questions in valid JSON format."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
