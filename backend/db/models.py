@@ -11,7 +11,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(String) 
+    # Thêm default="student" để an toàn, các role bao gồm: "admin", "teacher", "student"
+    role = Column(String, default="student") 
     full_name = Column(String)
     
     class_id = Column(Integer, ForeignKey("classrooms.id"), nullable=True)
@@ -40,6 +41,12 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, index=True)
+    
+    # 👇 ĐÃ THÊM 3 TRƯỜNG MỚI ĐỂ FIX LỖI 500 VÀ KHỚP VỚI FRONTEND 👇
+    title = Column(String, index=True)          # Tên hiển thị trên giao diện
+    file_path = Column(String)                  # Đường dẫn để xem/tải file
+    created_at = Column(DateTime(timezone=True), server_default=func.now()) # Thời gian tạo
+    
     filename = Column(String, index=True) 
     subject = Column(String, index=True) 
     upload_time = Column(DateTime, default=datetime.utcnow) 
@@ -105,7 +112,7 @@ class QuestionBank(Base):
     __tablename__ = "question_bank"
     id = Column(Integer, primary_key=True, index=True)
     subject = Column(String, index=True)
-    difficulty = Column(String, nullable=True) # <-- Đã cập nhật nullable=True
+    difficulty = Column(String, nullable=True) 
     content = Column(String)
     options = Column(JSON) 
     correct_answer = Column(String)

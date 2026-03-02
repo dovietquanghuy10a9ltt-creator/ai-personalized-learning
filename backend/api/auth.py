@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm # Đã thêm OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
@@ -27,9 +27,9 @@ class UserRegister(BaseModel):
     password: str
     role: str 
 
-class UserLogin(BaseModel):
-    email: str
-    password: str
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
 
 # --- HÀM PHỤ TRỢ ---
 def hash_password(password: str):
@@ -44,10 +44,42 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+# --- DEPENDENCY: LẤY THÔNG TIN USER ĐANG ĐĂNG NHẬP (TỪ TOKEN) ---
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Giải mã Token và trả về đối tượng User hiện tại đang đăng nhập"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Không thể xác thực thông tin (Token không hợp lệ hoặc đã hết hạn)",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
 # --- ROUTES ---
 
 @router.post("/register")
 def register(user_in: UserRegister, db: Session = Depends(get_db)):
+    # 1. CHẶN TẠO TÀI KHOẢN ADMIN/TEACHER TỪ BÊN NGOÀI
+    role_requested = user_in.role.strip().lower()
+    if role_requested in ["admin", "teacher"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Hành động bị từ chối! Chỉ Quản trị viên (Admin) mới có quyền tạo tài khoản Giáo viên."
+        )
+    
+    # 2. Ép kiểu an toàn: Bất cứ ai đăng ký ở đây đều bị gán quyền student
+    final_role = "student"
+
     user_exists = db.query(models.User).filter(models.User.username == user_in.email).first()
     if user_exists:
         raise HTTPException(status_code=400, detail="Email này đã được đăng ký.")
@@ -56,7 +88,7 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
         full_name=user_in.fullname,
         username=user_in.email,
         hashed_password=hash_password(user_in.password),
-        role=user_in.role
+        role=final_role
     )
     db.add(new_user)
     db.commit()
@@ -64,9 +96,14 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
     return {"message": "Đăng ký thành công"}
 
 @router.post("/login")
-def login(user_in: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == user_in.email).first()
-    if not user or not verify_password(user_in.password, user.hashed_password):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """
+    API Đăng nhập: Đã chuyển sang nhận OAuth2PasswordRequestForm để tương thích 100% với Swagger UI
+    """
+    # Swagger mặc định gửi username và password (username ở đây ta dùng như email)
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
     
     access_token = create_access_token(data={"sub": user.username, "role": user.role, "id": user.id})
@@ -79,6 +116,22 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "fullname": user.full_name,
         "userId": user.id 
     }
+
+@router.post("/change-password")
+def change_password(req: ChangePasswordRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    """
+    API Đổi mật khẩu dành cho người dùng đang đăng nhập.
+    Giáo viên sau khi nhận tài khoản ngẫu nhiên từ Admin sẽ dùng API này để đổi mật khẩu cá nhân.
+    """
+    # Kiểm tra mật khẩu cũ có đúng không
+    if not verify_password(req.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Mật khẩu cũ không chính xác!")
+    
+    # Cập nhật mật khẩu mới
+    current_user.hashed_password = hash_password(req.new_password)
+    db.commit()
+    
+    return {"message": "Đổi mật khẩu thành công! Lần đăng nhập sau hãy dùng mật khẩu mới."}
 
 # --- API LẤY THÔNG TIN NGƯỜI DÙNG & LỚP HỌC ---
 @router.get("/me/{user_id}")

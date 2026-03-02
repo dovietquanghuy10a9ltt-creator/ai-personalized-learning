@@ -2,19 +2,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import FileUploader from '@/components/FileUploader';
-import DocumentManager from '@/components/DocumentManager';
+// Đã xóa import DocumentManager
 import { 
   LayoutDashboard, 
-  Users, 
-  BookOpen, 
   Plus, 
   Loader2, 
   ChevronRight,
   GraduationCap,
-  Info
+  Info,
+  BookOpen,
+  FolderOpen
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function TeacherPage() {
   const router = useRouter();
@@ -49,10 +50,11 @@ export default function TeacherPage() {
       const data = res.data;
       setClasses(data);
       
-
       if (data.length > 0 && !selectedClassId) {
         setSelectedClassId(data[0].id);
         setSelectedClassName(data[0].name);
+        // Lưu classId mặc định vào localStorage để trang Thư viện tài liệu sử dụng
+        localStorage.setItem("classId", data[0].id.toString());
       }
     } catch (e) {
       toast.error("Không thể tải danh sách lớp học");
@@ -80,6 +82,7 @@ export default function TeacherPage() {
       if (res.data.class_id) {
         setSelectedClassId(res.data.class_id);
         setSelectedClassName(newClassName);
+        localStorage.setItem("classId", res.data.class_id.toString());
       }
     } catch (e) {
       toast.error("Lỗi khi tạo lớp học");
@@ -88,7 +91,7 @@ export default function TeacherPage() {
     }
   };
 
-  // Callback khi upload thành công để refresh danh sách tài liệu
+  // Callback khi upload thành công
   const handleUploadSuccess = useCallback(() => {
     setRefreshKey(prev => prev + 1);
     toast.success(`Đã cập nhật tri thức cho lớp ${selectedClassName}`);
@@ -97,13 +100,13 @@ export default function TeacherPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-20">
       
-      
+      {/* NAVBAR */}
       <nav className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-100">
             <LayoutDashboard size={20} />
           </div>
-          <h1 className="text-lg font-black text-slate-800 uppercase tracking-tight">Teacher Console</h1>
+          <h1 className="text-lg font-black text-slate-800 uppercase tracking-tight hidden sm:block">Teacher Console</h1>
         </div>
         <div className="px-4 py-1 bg-indigo-50 border border-indigo-100 rounded-full">
           <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Quản trị viên lớp học</p>
@@ -150,6 +153,8 @@ export default function TeacherPage() {
                       onClick={() => {
                         setSelectedClassId(cls.id);
                         setSelectedClassName(cls.name);
+                        // QUAN TRỌNG: Lưu classId vào bộ nhớ để trang Thư viện lấy ra dùng
+                        localStorage.setItem("classId", cls.id.toString());
                       }}
                       className={`w-full group p-4 rounded-2xl flex items-center justify-between transition-all border-2 text-left
                         ${selectedClassId === cls.id 
@@ -187,7 +192,7 @@ export default function TeacherPage() {
           </section>
 
           {/* CỘT PHẢI: TÀI LIỆU LỚP HỌC */}
-          <section className="lg:col-span-8 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <section className="lg:col-span-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {!selectedClassId ? (
               <div className="h-[60vh] flex flex-col items-center justify-center text-center p-10 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
@@ -199,7 +204,7 @@ export default function TeacherPage() {
               </div>
             ) : (
               <>
-                {/* Upload Section */}
+                {/* Khu vực Upload tài liệu (Giữ nguyên, tập trung 100% không gian) */}
                 <div className="space-y-6">
                   <div className="flex flex-col">
                     <span className="text-indigo-600 text-[10px] font-black uppercase tracking-widest mb-1">Đang làm việc tại: {selectedClassName}</span>
@@ -207,6 +212,7 @@ export default function TeacherPage() {
                   </div>
                   <div className="bg-white p-2 rounded-[2.5rem] shadow-sm border-2 border-indigo-100 ring-8 ring-indigo-50/30 transition-all">
                      <FileUploader 
+                        key={refreshKey} // Truyền key để reset Uploader nếu cần
                         onUploadSuccess={handleUploadSuccess} 
                         teacherId={teacherId} 
                         classId={selectedClassId} 
@@ -214,19 +220,27 @@ export default function TeacherPage() {
                   </div>
                 </div>
 
-                {/* List Section */}
-                <div className="space-y-6">
-                  <div className="flex flex-col">
-                    <span className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Kho lưu trữ nội bộ</span>
-                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Tài liệu của {selectedClassName}</h3>
+                {/* Nút shortcut truy cập nhanh vào Kho lưu trữ của lớp này */}
+                <Link href="/teacher/documents" className="block group">
+                  <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all">
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                        <FolderOpen size={28} />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight group-hover:text-indigo-600 transition-colors">
+                          Mở thư viện tài liệu
+                        </h4>
+                        <p className="text-xs font-medium text-slate-500 mt-0.5">
+                          Xem, lọc và xóa các tài liệu đã tải lên của lớp {selectedClassName}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 bg-slate-50 rounded-full flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                      <ChevronRight className="text-slate-400 group-hover:text-indigo-600 transition-colors" size={20} />
+                    </div>
                   </div>
-                  <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
-                    <DocumentManager 
-                      key={`${selectedClassId}-${refreshKey}`} 
-                      classId={selectedClassId} 
-                    />
-                  </div>
-                </div>
+                </Link>
               </>
             )}
           </section>

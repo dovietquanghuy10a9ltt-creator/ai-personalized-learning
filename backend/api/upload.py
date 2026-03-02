@@ -96,8 +96,9 @@ async def upload_document(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # if os.path.exists(file_path):
+        #     os.remove(file_path)
+        pass
 
 # --- API 3: LẤY DANH SÁCH FILE CỦA GIÁO VIÊN/LỚP ---
 @router.get("/documents")

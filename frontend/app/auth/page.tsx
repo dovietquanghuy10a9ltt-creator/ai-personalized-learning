@@ -5,12 +5,10 @@ import {
   Mail, 
   Lock, 
   User, 
-  GraduationCap, 
   ArrowRight, 
   Loader2, 
   Eye, 
   EyeOff,
-  UserCheck,
   ChevronLeft
 } from 'lucide-react';
 import axios from 'axios';
@@ -28,7 +26,7 @@ export default function AuthPage() {
     email: '',
     password: '',
     fullname: '',
-    role: 'student'
+    role: 'student' // ÉP CỨNG: Bất cứ ai đăng ký ở ngoài đều là học sinh
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,9 +35,15 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const res = await axios.post("http://localhost:8000/api/auth/login", {
-          email: formData.email,
-          password: formData.password
+        // FASTAPI YÊU CẦU FORM-DATA CHO ĐĂNG NHẬP (OAUTH2)
+        const loginData = new URLSearchParams();
+        loginData.append('username', formData.email); // Chú ý: backend nhận 'username' thay vì 'email'
+        loginData.append('password', formData.password);
+
+        const res = await axios.post("http://localhost:8000/api/auth/login", loginData, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
         });
         
         localStorage.setItem("token", res.data.access_token);
@@ -49,15 +53,19 @@ export default function AuthPage() {
 
         toast.success(`Chào mừng ${res.data.fullname} quay trở lại!`);
         
+        // CHUYỂN HƯỚNG DỰA TRÊN ROLE
         setTimeout(() => {
-          if (res.data.role === 'teacher') {
-            window.location.href = '/teacher';
+          if (res.data.role === 'admin') {
+            window.location.href = '/admin/teachers'; // Chuyển hướng Admin
+          } else if (res.data.role === 'teacher') {
+            window.location.href = '/teacher'; // Chuyển hướng Giáo viên
           } else {
-            window.location.href = '/adaptive';
+            window.location.href = '/adaptive'; // Chuyển hướng Học sinh
           }
         }, 1000);
         
       } else {
+        // ĐĂNG KÝ HỌC SINH MỚI
         await axios.post("http://localhost:8000/api/auth/register", formData);
         toast.success("Đăng ký thành công! Mời bạn đăng nhập.");
         setIsLogin(true);
@@ -72,7 +80,6 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6 font-sans relative overflow-hidden">
-      
       
       {/* Nút quay lại trang chủ */}
       <Link 
@@ -123,9 +130,9 @@ export default function AuthPage() {
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
-                type="email"
+                type="text" // Chuyển thành text để hỗ trợ đăng nhập tài khoản "admin" (không cần @)
                 required
-                placeholder="example@learning.com"
+                placeholder={isLogin ? "Email hoặc 'admin'" : "example@learning.com"}
                 className="w-full pl-12 pr-4 py-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all text-sm font-bold placeholder:text-slate-300"
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
               />
@@ -152,38 +159,6 @@ export default function AuthPage() {
               </button>
             </div>
           </div>
-
-          {!isLogin && (
-            <div className="space-y-3 pt-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Xác nhận vai trò</label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, role: 'student'})}
-                  className={`py-5 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all active:scale-95 ${
-                    formData.role === 'student' 
-                    ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600' 
-                    : 'border-slate-100 text-slate-300 hover:border-slate-200'
-                  }`}
-                >
-                  <GraduationCap size={24} />
-                  <span className="text-[10px] font-black uppercase">Học sinh</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({...formData, role: 'teacher'})}
-                  className={`py-5 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all active:scale-95 ${
-                    formData.role === 'teacher' 
-                    ? 'border-indigo-600 bg-indigo-50/50 text-indigo-600' 
-                    : 'border-slate-100 text-slate-300 hover:border-slate-200'
-                  }`}
-                >
-                  <UserCheck size={24} />
-                  <span className="text-[10px] font-black uppercase">Giáo viên</span>
-                </button>
-              </div>
-            </div>
-          )}
 
           <button
             type="submit"
