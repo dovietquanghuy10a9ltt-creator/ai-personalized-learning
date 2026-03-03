@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { Bot, ChevronRight, GraduationCap } from 'lucide-react';
+import { Bot, ChevronRight, GraduationCap, LockKeyhole } from 'lucide-react';
 
 const SUBJECTS = [
   { id: 1, name: "Vật lý", icon: "⚛️" },
@@ -30,6 +30,9 @@ const AssessmentForm = () => {
   const [subject, setSubject] = useState("");
   const [sessionTopic, setSessionTopic] = useState(""); 
   
+  const [enrolledSubjects, setEnrolledSubjects] = useState<string[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+
   const [questions, setQuestions] = useState<any[]>([]);
   const [answers, setAnswers] = useState<{[key: number]: string}>({}); 
   const [loading, setLoading] = useState(false);
@@ -51,6 +54,28 @@ const AssessmentForm = () => {
     if (typeof raw === 'object') return raw[0]?.msg || raw.msg || "Lỗi dữ liệu";
     return raw || "Lỗi hệ thống";
   };
+
+  useEffect(() => {
+    const fetchEnrolledClasses = async () => {
+      const userId = getUserId();
+      if (!userId) {
+        setLoadingSubjects(false);
+        return;
+      }
+      try {
+        const res = await axios.get(`http://localhost:8000/api/auth/me/${userId}`);
+        const classes = res.data.enrolled_classes || [];
+        const subjects = Array.from(new Set(classes.map((c: any) => c.subject))) as string[];
+        setEnrolledSubjects(subjects);
+      } catch (error) {
+        console.error("Lỗi lấy thông tin lớp:", error);
+      } finally {
+        setLoadingSubjects(false);
+      }
+    };
+    
+    fetchEnrolledClasses();
+  }, []);
 
   const fetchRoadmap = async (selectedSub: string) => {
     const userId = getUserId();
@@ -180,7 +205,7 @@ const AssessmentForm = () => {
     if (!userId) { toast.error("Vui lòng đăng nhập lại."); return; }
 
     setSubject(selectedSub);
-    setSessionTopic(""); 
+    setSessionTopic(""); // Đảm bảo tuyệt đối topic trống cho bài Đánh giá
     setLoading(true);
     setAnswers({});
     setTimer(0);
@@ -249,6 +274,20 @@ const AssessmentForm = () => {
     const userId = getUserId();
     if (!userId) return;
     setLoading(true);
+    
+    // 👇 FIX LỖI 422 BOOLEAN: Ép kiểu dứt khoát về true/false bằng Boolean()
+    const hasTopic = Boolean(sessionTopic && typeof sessionTopic === 'string' && sessionTopic.trim() !== "" && sessionTopic !== "null" && sessionTopic !== "undefined");
+
+    let testType = "baseline"; 
+    if (hasTopic) {
+        const topicLower = sessionTopic.toLowerCase();
+        if (topicLower.includes("cuối khóa") || topicLower.includes("tổng kết") || topicLower.includes("final")) {
+            testType = "final";
+        } else {
+            testType = "chapter";
+        }
+    }
+
     const submissionData = {
       subject,
       user_id: userId,
@@ -257,7 +296,8 @@ const AssessmentForm = () => {
         selected_option: opt
       })),
       duration_seconds: timer,
-      is_session_quiz: sessionTopic !== "" 
+      is_session_quiz: hasTopic, // Lúc này chắc chắn gửi lên là true hoặc false chuẩn
+      test_type: testType 
     };
 
     try {
@@ -294,24 +334,43 @@ const AssessmentForm = () => {
   const progressVal = Number(roadmap?.progress_percent);
   const displayProgress = isNaN(progressVal) ? 0 : Math.round(progressVal);
 
+  const displaySubjects = SUBJECTS.filter(s => enrolledSubjects.includes(s.name));
+  
+  // Biến hỗ trợ hiển thị UI chuẩn xác
+  const isRealSessionTopic = sessionTopic && sessionTopic !== "null" && sessionTopic !== "undefined" && sessionTopic.trim() !== "";
+
   return (
     <div key={getUserId()} className="min-h-screen bg-gray-50 py-10 px-4 font-sans text-slate-800">
 
       {step === 'select_subject' && (
         <div className="max-w-5xl mx-auto p-4 text-center">
           <h2 className="text-2xl font-black text-gray-800 mb-8 uppercase tracking-tighter">Hệ thống học tập thích ứng</h2>
-          {loading ? (
+          
+          {loading || loadingSubjects ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-blue-600 font-bold animate-pulse">AI đang phân tích tài liệu và soạn đề...</p>
+              <p className="text-blue-600 font-bold animate-pulse">Đang tải dữ liệu lớp học...</p>
+            </div>
+          ) : enrolledSubjects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-300 shadow-sm max-w-2xl mx-auto">
+              <LockKeyhole className="w-16 h-16 text-gray-300 mb-4" />
+              <h3 className="text-lg font-black text-gray-600 uppercase mb-2">Chưa có môn học nào được mở khóa</h3>
+              <p className="text-sm text-gray-500 mb-6 max-w-md">Bạn cần tham gia một lớp học từ Giáo viên để kích hoạt ngân hàng câu hỏi và thực hiện bài đánh giá năng lực.</p>
+              <button 
+                onClick={() => window.location.href = '/adaptive'} 
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+              >
+                Nhập mã lớp học ngay
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-              {SUBJECTS.map((sub) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 animate-in fade-in zoom-in duration-500">
+              {displaySubjects.map((sub) => (
                 <button 
                   key={sub.id} onClick={() => handleSelectSubject(sub.name)}
-                  className="group flex flex-col items-center p-5 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-500 hover:bg-blue-50 transition-all hover:-translate-y-1"
+                  className="group flex flex-col items-center p-5 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-500 hover:bg-blue-50 transition-all hover:-translate-y-1 relative overflow-hidden"
                 >
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></span>
                   <span className="text-3xl mb-3">{sub.icon}</span>
                   <span className="text-[10px] font-bold text-gray-600 uppercase group-hover:text-blue-600 leading-tight">{sub.name}</span>
                 </button>
@@ -324,7 +383,6 @@ const AssessmentForm = () => {
       {step === 'result' && resultData && !reviewMode && (
         <div className="max-w-4xl mx-auto space-y-6 pb-20">
           
-          {/* HIỆU ỨNG BẰNG KHEN TỐT NGHIỆP */}
           {roadmap?.is_completed && (
             <div className="relative p-1 rounded-[2.5rem] bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 shadow-2xl shadow-yellow-500/30 animate-in zoom-in duration-700 overflow-hidden mb-8">
                <div className="relative bg-white rounded-[2.4rem] p-8 md:p-12 text-center overflow-hidden">
@@ -352,7 +410,7 @@ const AssessmentForm = () => {
                   <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center text-3xl">🏆</div>
                   <div>
                       <h2 className="text-xl font-black text-gray-800">
-                        {sessionTopic ? `Qua bài: ${sessionTopic}` : subject}
+                        {isRealSessionTopic ? `Qua bài: ${sessionTopic}` : `Đánh giá: ${subject}`}
                       </h2>
                       <span className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest mt-1 inline-block">
                         Trình độ: {resultData.level}
@@ -406,7 +464,6 @@ const AssessmentForm = () => {
             </div>
           </div>
 
-          {/* CHỈ HIỂN THỊ DANH SÁCH LỘ TRÌNH KHI CHƯA TỐT NGHIỆP */}
           {roadmap && roadmap.roadmap_data && roadmap.roadmap_data.length > 0 && !roadmap.is_completed && (
             <div className="bg-white p-8 md:p-10 rounded-[2.5rem] shadow-2xl border border-gray-100 animate-in slide-in-from-bottom-5 duration-700">
               <div className="flex items-center justify-between mb-8">
@@ -469,7 +526,7 @@ const AssessmentForm = () => {
              <div className="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-white">
                 <div>
                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-1">
-                     {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : sessionTopic ? `KIỂM TRA BÀI: ${sessionTopic}` : `BÀI ĐÁNH GIÁ: ${subject}`}
+                     {reviewMode ? 'CHẾ ĐỘ XEM LẠI' : isRealSessionTopic ? `KIỂM TRA QUA BÀI: ${sessionTopic}` : `BÀI ĐÁNH GIÁ ĐẦU VÀO: ${subject}`}
                    </span>
                    <span className="text-xs font-bold text-gray-400">CÂU {currentIndex + 1}/{questions.length}</span>
                 </div>

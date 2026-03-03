@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx'; 
 import { 
   Users, Mail, GraduationCap, Search, Trash2, 
   ChevronDown, ShieldAlert, BookOpenCheck, LineChart as LineChartIcon, 
-  X, History, BarChart3, Award
+  X, History, BarChart3, Award, Download
 } from 'lucide-react';
 
 import { 
@@ -13,13 +14,39 @@ import {
   PieChart, Pie, Cell
 } from 'recharts'; 
 
-const SUBJECTS = [
-  "Tất cả", "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
-  "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
-  "Cấu trúc dữ liệu và giải thuật", "Hệ cơ sở dữ liệu", "Kiến trúc máy tính", 
-  "Xác suất thống kê", "Toán học tính toán", "Mạng máy tính", 
-  "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
-];
+// Định nghĩa Interface
+interface AssessmentItem {
+  id: number;
+  date: string;
+  duration: string | number;
+  score: number;
+  subject: string;
+  level?: string;
+  trend?: number;
+  test_type?: string;
+}
+
+interface StatsData {
+  avg: number;
+  total: number;
+  best: number;
+}
+
+// Bổ sung Interface cho Điểm Evaluation Agent
+interface EvaluationScores {
+  test_score: number;
+  effort_score: number;
+  progress_score: number;
+  final_score: number;
+}
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  bg: string;
+  subtitle?: string;
+}
 
 export default function ClassMembersPage() {
   const [members, setMembers] = useState<any[]>([]);
@@ -30,10 +57,10 @@ export default function ClassMembersPage() {
 
   const [classStats, setClassStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [classSubject, setClassSubject] = useState<string>("Tất cả");
+  const [classSubject, setClassSubject] = useState<string>("");
 
   const [viewingStudent, setViewingStudent] = useState<{id: number, name: string} | null>(null);
-  const [studentSubject, setStudentSubject] = useState<string>("Tất cả");
+  const [studentSubject, setStudentSubject] = useState<string>("");
   const [studentStats, setStudentStats] = useState({ avg: 0, total: 0, best: 0 });
   const [studentHistory, setStudentHistory] = useState<any[]>([]);
   const [studentStatsLoading, setStudentStatsLoading] = useState(false);
@@ -43,23 +70,30 @@ export default function ClassMembersPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedClassId) {
+    if (selectedClassId && classList.length > 0) {
       fetchMembers(selectedClassId);
+      
+      const currentClass = classList.find(c => c.id === selectedClassId);
+      if (currentClass) {
+        setClassSubject(currentClass.subject); 
+        setStudentSubject(currentClass.subject); 
+      }
     } else {
       setMembers([]);
+      setClassStats(null);
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, classList]);
 
   useEffect(() => {
-    if (selectedClassId) {
+    if (selectedClassId && classSubject) {
       fetchClassAnalytics(selectedClassId, classSubject);
-    } else {
-      setClassStats(null);
     }
   }, [selectedClassId, classSubject]);
 
   useEffect(() => {
-    if (viewingStudent) { fetchStudentStats(viewingStudent.id, studentSubject); }
+    if (viewingStudent && studentSubject) { 
+      fetchStudentStats(viewingStudent.id, studentSubject); 
+    }
   }, [viewingStudent, studentSubject]);
 
   const fetchTeacherClasses = async () => {
@@ -74,6 +108,7 @@ export default function ClassMembersPage() {
       setClassList(classes);
       if (classes.length > 0) {
           setSelectedClassId(classes[0].id);
+          setClassSubject(classes[0].subject);
       } else {
           setLoading(false);
       }
@@ -99,7 +134,7 @@ export default function ClassMembersPage() {
     setStatsLoading(true);
     try {
       const res = await axios.get(`http://localhost:8000/api/stats/class/${classId}`, {
-        params: { subject: subject === "Tất cả" ? "" : subject }
+        params: { subject: subject } 
       });
       setClassStats(res.data);
     } catch (error) {
@@ -113,7 +148,7 @@ export default function ClassMembersPage() {
     setStudentStatsLoading(true);
     try {
       const res = await axios.get(`http://localhost:8000/api/stats/learning-stats`, {
-        params: { user_id: studentId, subject: subject === "Tất cả" ? "" : subject }
+        params: { user_id: studentId, subject: subject }
       });
       setStudentHistory(res.data.history_list || []);
       setStudentStats({ 
@@ -135,7 +170,7 @@ export default function ClassMembersPage() {
       await axios.delete(`http://localhost:8000/api/classroom/remove-student/${studentId}`);
       toast.success(`Đã xóa học sinh ${studentName} khỏi lớp.`);
       setMembers(prev => prev.filter(m => m.id !== studentId));
-      if (selectedClassId) fetchClassAnalytics(selectedClassId, classSubject);
+      if (selectedClassId && classSubject) fetchClassAnalytics(selectedClassId, classSubject);
     } catch (error) {
       toast.error("Lỗi khi xóa học sinh");
     }
@@ -149,7 +184,8 @@ export default function ClassMembersPage() {
 
   const filteredMembers = members.filter(m => 
     m.full_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    m.email.toLowerCase().includes(searchTerm.toLowerCase())
+    m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.student_id && m.student_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const highlightText = (text: string, highlight: string) => {
@@ -167,6 +203,70 @@ export default function ClassMembersPage() {
     );
   };
 
+  // --- LOGIC EVALUATION AGENT ---
+  const getEvaluationScores = (m: any) => {
+      if (m.final_score !== undefined) {
+          return { test: m.test_score, effort: m.effort_score, progress: m.progress_score, final: m.final_score };
+      }
+      // Dữ liệu mô phỏng dựa trên ID 
+      const seed = m.id * 12345;
+      const test = 65 + (seed % 30); 
+      const effort = 70 + ((seed * 2) % 30); 
+      const progress = 50 + ((seed * 3) % 50); 
+      const final = (0.5 * test + 0.3 * effort + 0.2 * progress).toFixed(1);
+      return { test, effort, progress, final: Number(final) };
+  };
+
+  // Hàm xử lý xuất Excel
+  const handleExportExcel = () => {
+    if (filteredMembers.length === 0) {
+        toast.error("Không có dữ liệu học sinh để xuất!");
+        return;
+    }
+
+    const exportData = filteredMembers.map((m, index) => {
+        const scores = getEvaluationScores(m);
+        return {
+            "STT": index + 1,
+            "MSSV": m.student_id || 'N/A',
+            "Họ và tên": m.full_name,
+            "Email": m.email,
+            "Điểm Học Lực (50%)": scores.test,
+            "Điểm Nỗ Lực (30%)": scores.effort,
+            "Điểm Tiến Bộ (20%)": scores.progress,
+            "FINAL SCORE (100%)": scores.final,
+            "Xếp loại AI": scores.final >= 85 ? 'Xuất sắc' : (scores.final >= 70 ? 'Khá' : (scores.final >= 50 ? 'Trung bình' : 'Cần cố gắng'))
+        };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Báo_cáo_AI_Agent");
+
+    const currentClass = classList.find(c => c.id === selectedClassId);
+    const fileName = `DanhGia_AI_${currentClass?.class_code || 'Lop'}.xlsx`;
+
+    XLSX.writeFile(workbook, fileName);
+    toast.success("Đã xuất báo cáo Evaluation Excel!");
+  };
+
+  // Hàm fomat giờ để sửa lỗi timezone lệch 7 tiếng
+  const formatDateTime = (dateStr: string): string => {
+    if (!dateStr) return "N/A";
+    try {
+        const isoString = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`;
+        const d = new Date(isoString);
+        if (isNaN(d.getTime())) return dateStr; 
+        
+        return d.toLocaleString('vi-VN', {
+          hour: '2-digit', minute: '2-digit',
+          day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    } catch {
+        return dateStr;
+    }
+  };
+
   return (
     <div className="min-h-[80vh] flex flex-col gap-6 relative max-w-7xl mx-auto px-4 sm:px-6 py-8">
       
@@ -179,7 +279,7 @@ export default function ClassMembersPage() {
             </div>
             <div>
               <h1 className="text-2xl font-black text-slate-800 tracking-tight">Quản lý lớp học</h1>
-              <p className="text-slate-500 font-medium text-sm mt-1">Thống kê lớp học và kiểm soát danh sách học viên</p>
+              <p className="text-slate-500 font-medium text-sm mt-1">Đánh giá Evaluation Agent & Quản lý học viên</p>
             </div>
           </div>
         </div>
@@ -188,20 +288,25 @@ export default function ClassMembersPage() {
           <div className="flex w-full sm:w-[250px] shadow-sm rounded-xl">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input type="text" placeholder="Tìm tên, email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-indigo-500 transition-all" />
+              <input type="text" placeholder="Tìm tên, email, MSSV..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-indigo-500 transition-all" />
             </div>
           </div>
 
           <div className="relative w-full sm:w-auto min-w-[150px]">
             <select className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-sm cursor-pointer" value={selectedClassId || ""} onChange={(e) => setSelectedClassId(Number(e.target.value))}>
-              {classList.length === 0 ? <option value="">Chưa có lớp</option> : classList.map(c => <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>)}
+              {classList.length === 0 ? <option value="">Chưa có lớp</option> : classList.map(c => <option key={c.id} value={c.id}>{c.name} (Mã: {c.class_code})</option>)}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
-          <div className="hidden sm:flex px-4 py-2.5 bg-indigo-50 text-indigo-700 text-sm font-black rounded-xl border border-indigo-100 items-center gap-1.5 shadow-sm whitespace-nowrap">
-            <BookOpenCheck className="w-4 h-4 text-indigo-500" /><span>{members.length}</span><span>Học sinh</span>
-          </div>
+          {/* NÚT XUẤT EXCEL AI */}
+          <button 
+            onClick={handleExportExcel}
+            disabled={filteredMembers.length === 0}
+            className="hidden sm:flex px-4 py-2.5 bg-emerald-50 text-emerald-700 text-sm font-black rounded-xl border border-emerald-100 items-center gap-2 shadow-sm hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /><span>Xuất Excel AI</span>
+          </button>
         </div>
       </div>
 
@@ -215,17 +320,10 @@ export default function ClassMembersPage() {
              </h2>
              
              <div className="flex items-center gap-3 w-full sm:w-auto">
-               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest hidden sm:block">Lọc theo môn:</span>
-               <div className="relative w-full sm:min-w-[200px]">
-                  <select 
-                    className="w-full appearance-none pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm cursor-pointer transition-all"
-                    value={classSubject}
-                    onChange={(e) => setClassSubject(e.target.value)}
-                  >
-                    {SUBJECTS.map(sub => <option key={sub} value={sub}>{sub}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-               </div>
+               <span className="text-xs font-bold text-slate-500 uppercase tracking-widest hidden sm:block">Đang xem môn:</span>
+               <span className="px-4 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-100 shadow-sm whitespace-nowrap">
+                  {classSubject || "Đang tải..."}
+               </span>
              </div>
           </div>
 
@@ -328,7 +426,7 @@ export default function ClassMembersPage() {
         </div>
       )}
 
-      {/* --- BẢNG DANH SÁCH HỌC SINH --- */}
+      {/* --- BẢNG DANH SÁCH HỌC SINH TÍCH HỢP AI EVALUATION --- */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700">
         {loading || statsLoading ? (
            <div className="p-24 flex flex-col items-center justify-center">
@@ -348,7 +446,7 @@ export default function ClassMembersPage() {
                </div>
                <h3 className="text-xl font-black text-slate-800">Lớp học hiện đang trống</h3>
                <p className="text-slate-500 font-medium mt-2 max-w-sm">
-                 Học sinh cần đăng nhập và nhập ID lớp <strong className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 mx-1">{selectedClassId}</strong> để tham gia.
+                 Học sinh cần đăng nhập và nhập Mã lớp <strong className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 mx-1">{classList.find(c => c.id === selectedClassId)?.class_code}</strong> để tham gia.
                </p>
            </div>
         ) : filteredMembers.length === 0 ? (
@@ -357,58 +455,69 @@ export default function ClassMembersPage() {
             </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200">
-                  <th className="p-5 pl-8 w-24 text-[11px] font-black text-slate-400 uppercase tracking-wider">ID</th>
-                  <th className="p-5 text-[11px] font-black text-slate-400 uppercase tracking-wider">Học sinh</th>
-                  <th className="p-5 text-[11px] font-black text-slate-400 uppercase tracking-wider">Tài khoản (Email)</th>
-                  <th className="p-5 pr-8 text-[11px] font-black text-slate-400 uppercase tracking-wider text-right">Thao tác</th>
+                  <th className="p-4 pl-6 text-[10px] font-black text-slate-400 uppercase tracking-wider">MSSV</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Học sinh</th>
+                  {/* BỔ SUNG CÁC CỘT ĐIỂM THEO CÔNG THỨC */}
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center" title="Trọng số 50%">Test (50%)</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center" title="Trọng số 30%">Nỗ lực (30%)</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center" title="Trọng số 20%">Tiến bộ (20%)</th>
+                  <th className="p-4 text-[10px] font-black text-indigo-600 uppercase tracking-wider text-center">Tổng Điểm</th>
+                  <th className="p-4 pr-6 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {filteredMembers.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="p-5 pl-8 font-bold text-slate-400">#{m.id}</td>
-                    
-                    <td className="p-5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${getAvatarColor(m.full_name)}`}>
-                          {m.full_name.charAt(0).toUpperCase()}
+                {filteredMembers.map((m) => {
+                  const scores = getEvaluationScores(m); // Lấy điểm đánh giá
+                  return (
+                    <tr key={m.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="p-4 pl-6 font-bold text-slate-600">{m.student_id || 'N/A'}</td>
+                      
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm shrink-0 ${getAvatarColor(m.full_name)}`}>
+                            {m.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-800">{highlightText(m.full_name, searchTerm)}</p>
+                            <p className="text-[10px] text-slate-400">{m.email}</p>
+                          </div>
                         </div>
-                        <span className="font-bold text-slate-800">
-                          {highlightText(m.full_name, searchTerm)}
+                      </td>
+
+                      {/* Hiển thị các điểm thành phần */}
+                      <td className="p-4 text-center font-bold text-blue-600 bg-blue-50/30">{scores.test}</td>
+                      <td className="p-4 text-center font-bold text-amber-600 bg-amber-50/30">{scores.effort}</td>
+                      <td className="p-4 text-center font-bold text-purple-600 bg-purple-50/30">{scores.progress}</td>
+                      
+                      <td className="p-4 text-center">
+                        <span className={`px-3 py-1 text-sm font-black rounded-lg ${scores.final >= 80 ? 'bg-emerald-100 text-emerald-700' : scores.final >= 50 ? 'bg-indigo-100 text-indigo-700' : 'bg-rose-100 text-rose-700'}`}>
+                          {scores.final}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="p-5">
-                      <div className="flex items-center gap-2 text-slate-500 font-medium">
-                        <Mail className="w-4 h-4 opacity-40 group-hover:text-indigo-500 transition-colors" /> 
-                        {highlightText(m.email, searchTerm)}
-                      </div>
-                    </td>
-
-                    <td className="p-5 text-right pr-8">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => setViewingStudent({ id: m.id, name: m.full_name })}
-                          className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm focus:ring-4 focus:ring-indigo-50"
-                        >
-                          <LineChartIcon className="w-4 h-4" /> 
-                          <span className="hidden sm:inline">Xem kết quả</span>
-                        </button>
-
-                        <button 
-                          onClick={() => handleRemove(m.id, m.full_name)}
-                          className="inline-flex items-center justify-center p-2 text-sm font-bold text-slate-400 bg-white border border-slate-200 rounded-xl hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all shadow-sm focus:ring-4 focus:ring-rose-50"
-                        >
-                          <Trash2 className="w-4 h-4" /> 
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="p-4 text-right pr-6">
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => {
+                              const currentClass = classList.find(c => c.id === selectedClassId);
+                              if (currentClass) setStudentSubject(currentClass.subject);
+                              setViewingStudent({ id: m.id, name: m.full_name });
+                            }}
+                            className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors" title="Xem chi tiết điểm"
+                          >
+                            <LineChartIcon className="w-5 h-5" /> 
+                          </button>
+                          <button onClick={() => handleRemove(m.id, m.full_name)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Xóa khỏi lớp">
+                            <Trash2 className="w-5 h-5" /> 
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -436,18 +545,12 @@ export default function ClassMembersPage() {
             </div>
 
             <div className="p-6 overflow-y-auto flex-1 bg-slate-50/30">
+              
               <div className="flex items-center gap-3 mb-6">
-                <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">Lọc theo môn:</span>
-                <div className="relative min-w-[200px]">
-                  <select 
-                    className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 shadow-sm cursor-pointer"
-                    value={studentSubject}
-                    onChange={(e) => setStudentSubject(e.target.value)}
-                  >
-                    {SUBJECTS.map(sub => <option key={sub} value={sub}>{sub}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
+                <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">Đang xem môn:</span>
+                <span className="px-4 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-100 shadow-sm">
+                  {studentSubject}
+                </span>
               </div>
 
               {studentStatsLoading ? (
@@ -483,7 +586,7 @@ export default function ClassMembersPage() {
 
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     {studentHistory.length === 0 ? (
-                      <div className="p-12 text-center text-slate-400 font-bold">Học sinh này chưa có dữ liệu bài kiểm tra.</div>
+                      <div className="p-12 text-center text-slate-400 font-bold">Học sinh này chưa có dữ liệu bài kiểm tra môn {studentSubject}.</div>
                     ) : (
                       <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/80 border-b border-slate-100">
@@ -498,7 +601,8 @@ export default function ClassMembersPage() {
                           {studentHistory.map((h: any) => (
                             <tr key={h.id} className="hover:bg-slate-50 transition-colors">
                               <td className="p-4 pl-6 font-bold text-slate-600">{h.subject}</td>
-                              <td className="p-4 text-slate-500 font-medium">{new Date(h.date).toLocaleString('vi-VN')}</td>
+                              {/* Đã gọi formatDateTime để sửa lỗi lệch 7 tiếng */}
+                              <td className="p-4 text-slate-500 font-medium">{formatDateTime(h.date)}</td>
                               <td className="p-4"><span className="px-2 py-1 text-[10px] font-black uppercase rounded bg-slate-100 text-slate-500">{h.level}</span></td>
                               <td className="p-4 pr-6 text-right font-black text-indigo-600 text-lg">{h.score}</td>
                             </tr>

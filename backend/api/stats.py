@@ -1,10 +1,10 @@
-# backend/api/stats.py
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from typing import Optional
 from db.database import get_db
-from db.models import AssessmentHistory, LearnerProfile, User
+# 👇 ĐÃ SỬA: Import thêm Classroom để lấy danh sách học sinh theo cơ chế N-N
+from db.models import AssessmentHistory, LearnerProfile, User, Classroom
 
 router = APIRouter()
 
@@ -60,6 +60,7 @@ async def get_stats(
             "date": h.timestamp.isoformat(),
             "duration": h.duration_seconds if h.duration_seconds else 0,
             "level": h.level_at_time if h.level_at_time else "Beginner",
+            "test_type": h.test_type, # 👇 FIX LỖI TẠI ĐÂY: Trả về test_type cho Frontend hiển thị đúng nhãn
             "trend": round(float(trend), 1),
             "correct": h.correct_count
         })
@@ -87,9 +88,14 @@ def get_class_analytics(
     subject: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    # 1. Lấy tất cả học sinh đang học trong lớp này
-    students = db.query(User.id).filter(User.class_id == class_id, User.role == "student").all()
-    student_ids = [s[0] for s in students]
+    # Lấy danh sách học sinh dựa trên quan hệ N-N qua bảng Classroom
+    classroom = db.query(Classroom).filter(Classroom.id == class_id).first()
+    
+    if not classroom:
+        return {"score_dist": [], "level_dist": [], "study_hours": []}
+
+    # Trích xuất ID của những user có role "student" trong lớp này
+    student_ids = [student.id for student in classroom.students if student.role == "student"]
 
     if not student_ids:
         return {"score_dist": [], "level_dist": [], "study_hours": []}

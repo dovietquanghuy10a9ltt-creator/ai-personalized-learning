@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager # Thêm thư viện quản lý vòng đời (lifespan)
-
+from api import assessment, upload, adaptive, stats, auth, classroom, admin, document, exam_generator # Thêm exam_generator
 # --- IMPORT DATABASE VÀ MODELS ---
 from db import models
 from db.database import engine, SessionLocal 
@@ -65,6 +65,7 @@ app.add_middleware(
 
 os.makedirs("temp_uploads", exist_ok=True) # Đảm bảo thư mục tồn tại để không báo lỗi
 app.mount("/temp_uploads", StaticFiles(directory="temp_uploads"), name="temp_uploads")
+
 # --- ĐĂNG KÝ ROUTER ---
 
 # 0. Authentication (Xử lý Đăng nhập/Đăng ký)
@@ -89,9 +90,11 @@ app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 # 7. Document (Quản lý Thư viện học liệu) 
-app.include_router(document.router, prefix="/api/document", tags=["Document"])
+# 👇 ĐÃ SỬA CHỖ NÀY: prefix="/api/documents" (thêm chữ 's') để khớp với Frontend
+app.include_router(document.router, prefix="/api/documents", tags=["Document"])
 
-
+# 8. Exam Generator (Sinh đề thi file Word)
+app.include_router(exam_generator.router, prefix="/api/exam", tags=["Exam"])
 @app.get("/")
 def read_root():
     return {"message": "Hệ thống AI Learning đã sẵn sàng!"}

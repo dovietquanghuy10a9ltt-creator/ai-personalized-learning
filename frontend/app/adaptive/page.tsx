@@ -5,25 +5,17 @@ import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import { 
   Send, Bot, Map, Sparkles, MessageSquare, GraduationCap,
-  UserPlus, Loader2, CheckCircle2, Lock, PlayCircle, Download
+  UserPlus, Loader2, CheckCircle2, Lock, PlayCircle, Download, BookOpen
 } from 'lucide-react';
 
-const SUBJECTS = [
-  "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
-  "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
-  "Cấu trúc dữ liệu và giải thuật", "Hệ cơ sở dữ liệu", "Kiến trúc máy tính", 
-  "Xác suất thống kê", "Toán học tính toán", "Mạng máy tính", 
-  "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
-];
-
 export default function AdaptiveLearningPage() {
-  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[5]);
+  const [enrolledClasses, setEnrolledClasses] = useState<any[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState("");
   
   const [roadmap, setRoadmap] = useState<any[]>([]);
   const [loadingRoadmap, setLoadingRoadmap] = useState(false);
   const [currentSessionIndex, setCurrentSessionIndex] = useState(1); 
   const [learnerLevel, setLearnerLevel] = useState("BEGINNER");
-  // THÊM: State lưu trạng thái tốt nghiệp
   const [isCompleted, setIsCompleted] = useState(false);
 
   const [messages, setMessages] = useState<{role: string, content: string}[]>([]);
@@ -32,37 +24,104 @@ export default function AdaptiveLearningPage() {
   const [activeLessonContext, setActiveLessonContext] = useState<string>("");
   
   const [userId, setUserId] = useState<number | null>(null);
-  const [userClass, setUserClass] = useState<any>(null);
   const [classCode, setClassCode] = useState("");
   const [joining, setJoining] = useState(false);
 
   const [triggerInitialMessage, setTriggerInitialMessage] = useState(false);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // CƠ CHẾ TỰ ĐỘNG KHỞI TẠO TỪ URL (AUTO-LOAD)
+  // FIX LỖI VÒNG LẶP: Dùng useRef thay vì useState để đếm giờ ngầm, không gây re-render
+  const userIdRef = useRef<number | null>(null);
+
   useEffect(() => {
-    const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
-    if (id) {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    // Nếu chưa có môn học nào được chọn, không làm gì cả
+    if (!selectedSubject) return;
+
+    // Khi môn học được chọn -> Lưu lại thời điểm bắt đầu
+    const startTime = new Date();
+    const subjectToLog = selectedSubject;
+
+    const saveStudySession = () => {
+      if (userIdRef.current && subjectToLog) {
+        const endTime = new Date();
+        const diffMs = endTime.getTime() - startTime.getTime();
+        const durationMinutes = Math.floor(diffMs / 60000); 
+
+        // Chỉ lưu nếu học viên ở lại trang ít nhất 1 phút
+        if (durationMinutes >= 1) {
+            fetch("http://localhost:8000/api/adaptive/log-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_id: userIdRef.current,
+                    subject: subjectToLog,
+                    duration_minutes: durationMinutes
+                }),
+                keepalive: true 
+            }).catch(() => {}); // Bỏ qua lỗi fetch để không ảnh hưởng UI
+        }
+      }
+    };
+
+    // Bắt sự kiện khi người dùng tắt tab/đóng trình duyệt
+    window.addEventListener('beforeunload', saveStudySession);
+
+    // Cleanup function: Tự động chạy khi chuyển môn khác HOẶC khi chuyển sang trang khác (Kiểm tra/Kết quả)
+    return () => {
+      window.removeEventListener('beforeunload', saveStudySession);
+      saveStudySession();
+    };
+  }, [selectedSubject]); // Effect chỉ chạy lại ĐÚNG 1 LẦN khi selectedSubject thay đổi, chấm dứt hoàn toàn vòng lặp.
+
+  useEffect(() => {
+    const initData = async () => {
+      const id = localStorage.getItem("userId") || localStorage.getItem("user_id");
+      if (!id) return;
+      
       const uid = parseInt(id);
       setUserId(uid);
-      fetchUserStatus(uid);
 
-      const params = new URLSearchParams(window.location.search);
-      const urlSubject = params.get("subject");
-      const autoStart = params.get("auto_start") === "true";
-      
-      let targetSubject = selectedSubject;
-      if (urlSubject) {
+      try {
+        const res = await axios.get(`http://localhost:8000/api/auth/me/${uid}`);
+        const classes = res.data.enrolled_classes || [];
+        setEnrolledClasses(classes);
+
+        let targetSubject = "";
+        if (classes.length > 0) {
+          targetSubject = classes[0].subject; 
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const urlSubject = params.get("subject");
+        const autoStart = params.get("auto_start") === "true";
+        
+        if (urlSubject && classes.find((c: any) => c.subject === urlSubject)) {
           targetSubject = urlSubject;
-          setSelectedSubject(urlSubject);
-      }
+        }
 
-      autoLoadRoadmap(uid, targetSubject, autoStart, false);
-    }
+        if (targetSubject) {
+          setSelectedSubject(targetSubject);
+          autoLoadRoadmap(uid, targetSubject, autoStart, false);
+        }
+      } catch (error) {
+        console.error("Lỗi lấy thông tin học sinh:", error);
+      }
+    };
+    
+    initData();
   }, []);
 
+
   const autoLoadRoadmap = async (uid: number, subj: string, autoStart: boolean = false, isManualClick: boolean = false) => {
+    if (!subj) {
+        if (isManualClick) toast.error("Vui lòng chọn môn học!");
+        return;
+    }
+
     setLoadingRoadmap(true);
     setRoadmap([]); 
     setMessages([]);
@@ -78,8 +137,6 @@ export default function AdaptiveLearningPage() {
          setRoadmap(loadedRoadmap);
          setCurrentSessionIndex(currentSess); 
          setLearnerLevel(res.data.level_assigned.toUpperCase());
-         
-         //Cập nhật biến Tốt nghiệp từ Backend gửi lên
          setIsCompleted(res.data.is_completed);
          
          if (autoStart && loadedRoadmap.length > 0) {
@@ -89,7 +146,7 @@ export default function AdaptiveLearningPage() {
              }, 300);
          }
       } else if (isManualClick) {
-         toast.error("Bạn chưa làm bài đánh giá năng lực môn này. Hãy quay lại trang Kiểm Tra nhé!");
+         toast.error("Bạn chưa làm bài test đánh giá năng lực môn này. Hãy quay lại trang Kiểm Tra nhé!");
       }
     } catch (error) {
       if (isManualClick) toast.error("Lỗi khi tải chương trình học.");
@@ -105,33 +162,31 @@ export default function AdaptiveLearningPage() {
     }
     autoLoadRoadmap(userId, selectedSubject, false, true);
   };
-  // =========================================================================
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loadingChat]);
 
-  const fetchUserStatus = async (id: number) => {
-    try {
-      const res = await axios.get(`http://localhost:8000/api/auth/me/${id}`);
-      if (res.data.enrolled_class) {
-        setUserClass(res.data.enrolled_class);
-      }
-    } catch (e) {
-      console.error("Lỗi tải thông tin lớp");
-    }
-  };
-
   const handleJoinClass = async () => {
     if (!classCode.trim() || !userId) return;
     setJoining(true);
     try {
-      await axios.post("http://localhost:8000/api/classroom/join", null, {
-        params: { student_id: userId, class_id: classCode }
+      const joinRes = await axios.post("http://localhost:8000/api/classroom/join", {
+        class_code: classCode.trim().toUpperCase(),
+        user_id: userId
       });
-      toast.success("Tham gia lớp học thành công!");
-      fetchUserStatus(userId);
-      setClassCode("");
+      
+      toast.success(joinRes.data.message || "Tham gia lớp học thành công!");
+      
+      const meRes = await axios.get(`http://localhost:8000/api/auth/me/${userId}`);
+      const updatedClasses = meRes.data.enrolled_classes || [];
+      setEnrolledClasses(updatedClasses);
+      
+      const joinedSubject = joinRes.data.subject;
+      setSelectedSubject(joinedSubject);
+      autoLoadRoadmap(userId, joinedSubject, false, false);
+      
+      setClassCode(""); 
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "Mã lớp không hợp lệ");
     } finally {
@@ -187,7 +242,6 @@ export default function AdaptiveLearningPage() {
 
       setMessages(prev => [...prev, { role: "assistant", content: res.data.reply }]);
     } catch (e: any) {
-      console.error("LỖI CHAT API:", e);
       const realError = e.response?.data?.detail || e.message || "Lỗi đường truyền API";
       const errorString = typeof realError === 'object' ? JSON.stringify(realError) : realError;
       
@@ -200,56 +254,61 @@ export default function AdaptiveLearningPage() {
     }
   };
 
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const subj = e.target.value;
+      setSelectedSubject(subj);
+      if (userId) autoLoadRoadmap(userId, subj, false, false);
+  };
+
   return (
     <div className="fixed inset-0 bg-[#F8FAFC] font-sans text-slate-800 flex flex-col pt-[80px] pb-4 px-6 overflow-hidden">
 
       <div className="max-w-[1600px] w-full mx-auto mb-4 shrink-0">
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-          {!userClass ? (
-            <div className="flex items-center gap-4 w-full">
-              <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 font-black text-[10px] uppercase">
-                <UserPlus size={14} /> Chưa có lớp học
-              </div>
-              <div className="flex gap-2 flex-1 max-w-sm">
-                <input 
-                  type="text" 
-                  placeholder="Nhập mã lớp để mở khóa tài liệu..."
-                  value={classCode}
-                  onChange={(e) => setClassCode(e.target.value)}
-                  className="flex-1 bg-slate-50 border-none outline-none text-[11px] font-bold px-4 py-2 rounded-xl focus:ring-2 ring-indigo-500 transition-all"
-                />
-                <button 
-                  onClick={handleJoinClass}
-                  disabled={joining}
-                  className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-black disabled:opacity-50"
-                >
-                  {joining ? <Loader2 className="animate-spin" size={14} /> : "Tham gia"}
-                </button>
-              </div>
+        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+              {enrolledClasses.length === 0 ? (
+                 <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 font-black text-[10px] uppercase shrink-0">
+                   <UserPlus size={14} /> Chưa tham gia lớp nào
+                 </div>
+              ) : (
+                 <div className="flex items-center gap-2 shrink-0">
+                   <div className="bg-emerald-50 p-1.5 rounded-lg text-emerald-600 border border-emerald-100 shadow-sm">
+                     <CheckCircle2 size={16} />
+                   </div>
+                   <div className="flex gap-2">
+                      {enrolledClasses.map(c => (
+                          <span key={c.id} title={`GV: ${c.teacher_name}`} className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-2.5 py-1.5 rounded-lg uppercase tracking-wider border border-indigo-100 whitespace-nowrap">
+                            {c.subject} <span className="text-indigo-400 ml-1">({c.name})</span>
+                          </span>
+                      ))}
+                   </div>
+                 </div>
+              )}
             </div>
-          ) : (
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600 border border-emerald-100 shadow-sm">
-                  <CheckCircle2 size={18} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase leading-none">Lớp học hiện tại</p>
-                  <p className="text-sm font-black text-slate-800 mt-0.5">{userClass.name} <span className="text-indigo-600 font-medium ml-2 text-xs">GV: {userClass.teacher_name}</span></p>
-                </div>
-              </div>
-              <div className="text-[9px] font-black text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-100">
-                AI đã sẵn sàng tri thức lớp học
-              </div>
+
+            <div className="flex gap-2 w-full md:w-auto md:max-w-sm shrink-0">
+               <input 
+                 type="text" 
+                 placeholder="Nhập mã CODE lớp học..."
+                 value={classCode}
+                 onChange={(e) => setClassCode(e.target.value)}
+                 className="flex-1 bg-slate-50 border border-slate-200 outline-none text-[11px] font-bold px-4 py-2 rounded-xl focus:ring-2 ring-indigo-500 transition-all uppercase placeholder:normal-case"
+               />
+               <button 
+                 onClick={handleJoinClass}
+                 disabled={joining || !classCode.trim()}
+                 className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black disabled:opacity-50 flex items-center gap-2 transition-transform active:scale-95 shadow-sm"
+               >
+                 {joining ? <Loader2 className="animate-spin" size={14} /> : "Tham gia"}
+               </button>
             </div>
-          )}
         </div>
       </div>
 
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-0 w-full max-w-[1600px] mx-auto">
         
         <div className="xl:col-span-7 flex flex-col gap-4 h-full min-h-0">
-          
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 shadow-sm">
@@ -264,14 +323,21 @@ export default function AdaptiveLearningPage() {
             <div className="flex w-full sm:w-auto gap-2">
               <select 
                 value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                className="flex-1 sm:w-48 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 appearance-none cursor-pointer transition-all"
+                onChange={handleSubjectChange}
+                disabled={enrolledClasses.length === 0}
+                className="flex-1 sm:w-48 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-500 appearance-none cursor-pointer transition-all disabled:opacity-50"
               >
-                {SUBJECTS.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                {enrolledClasses.length === 0 ? (
+                    <option value="">Chưa có môn học</option>
+                ) : (
+                    enrolledClasses.map(cls => (
+                        <option key={cls.id} value={cls.subject}>{cls.subject}</option>
+                    ))
+                )}
               </select>
               <button 
                 onClick={handleLoadRoadmap}
-                disabled={loadingRoadmap || !userClass}
+                disabled={loadingRoadmap || enrolledClasses.length === 0}
                 className="px-5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-indigo-600 transition-all flex items-center gap-2 disabled:opacity-50 shadow-md"
               >
                 {loadingRoadmap ? <Loader2 className="animate-spin" size={14} /> : <><Download size={14} className="text-indigo-300" /> Tải lộ trình</>}
@@ -280,10 +346,10 @@ export default function AdaptiveLearningPage() {
           </div>
 
           <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-0 relative">
-             {!userClass ? (
+             {enrolledClasses.length === 0 ? (
                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
-                    <UserPlus className="w-12 h-12 mb-3 opacity-20" />
-                    <p className="text-xs font-bold uppercase tracking-widest">Bạn cần tham gia lớp học</p>
+                    <BookOpen className="w-12 h-12 mb-3 opacity-20" />
+                    <p className="text-xs font-bold uppercase tracking-widest">Bạn cần tham gia lớp học trước</p>
                  </div>
              ) : roadmap.length === 0 && !loadingRoadmap ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
@@ -304,7 +370,6 @@ export default function AdaptiveLearningPage() {
                       </span>
                    </div>
 
-                   {/* BANNER TỐT NGHIỆP HIỂN THỊ KHI isCompleted = true */}
                    {isCompleted && (
                       <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-5 rounded-2xl mb-6 flex items-center justify-between shadow-sm relative z-10 animate-in fade-in zoom-in">
                          <div className="flex items-center gap-4">
@@ -319,7 +384,6 @@ export default function AdaptiveLearningPage() {
 
                    {roadmap.map((lesson, idx) => {
                       const isUnlocked = lesson.session <= currentSessionIndex;
-                      //Nếu đã tốt nghiệp, không bài nào hiển thị trạng thái "Đang học" nữa
                       const isCurrent = lesson.session === currentSessionIndex && !isCompleted;
                       
                       return (

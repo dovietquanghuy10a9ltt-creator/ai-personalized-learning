@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from db.database import get_db, engine, Base
-from db.models import LearnerProfile, QuestionBank, AssessmentHistory, User, Document, LearningRoadmap
+from db.models import LearnerProfile, QuestionBank, AssessmentHistory, User, Document, LearningRoadmap, Classroom
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List
@@ -37,6 +37,8 @@ class SubmitRequest(BaseModel):
     answers: List[AnswerSubmission]
     duration_seconds: int = 300 
     is_session_quiz: bool = False
+    # 👇 THÊM TRƯỜNG NÀY ĐỂ NHẬN LOẠI BÀI KIỂM TRA TỪ FRONTEND
+    test_type: str = "baseline" 
 
 # --- 1. SINH ĐỀ THI ĐÁNH GIÁ TỔNG QUAN (ĐẦU VÀO) ---
 @router.post("/generate")
@@ -45,8 +47,13 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Vui lòng chọn môn học!")
 
     user = db.query(User).filter(User.id == req.user_id).first()
-    if not user or not user.class_id:
-        raise HTTPException(status_code=400, detail="Người dùng không tồn tại hoặc chưa tham gia lớp học.")
+    if not user:
+        raise HTTPException(status_code=400, detail="Người dùng không tồn tại.")
+
+    # TÌM LỚP HỌC MÀ SINH VIÊN ĐÃ THAM GIA ĐÚNG VỚI MÔN NÀY
+    target_class = next((c for c in getattr(user, 'enrolled_classes', []) if c.subject == req.subject), None)
+    if not target_class:
+        raise HTTPException(status_code=400, detail=f"Bạn chưa tham gia lớp học nào cho môn '{req.subject}'.")
 
     # ==============================================================
     # CHẶN LÀM LẠI BÀI THI: Kiểm tra xem đã có Lộ trình học chưa
@@ -58,9 +65,9 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
             detail=f"Bạn đã hoàn thành bài đánh giá năng lực môn '{req.subject}'. Vui lòng vào mục Lộ trình để bắt đầu học!"
         )
 
-    # Lấy tài liệu nếu chưa thi
+    # LẤY TÀI LIỆU CỦA ĐÚNG LỚP ĐÓ
     allowed_docs = db.query(Document).filter(
-        Document.class_id == user.class_id,
+        Document.class_id == target_class.id,
         Document.subject == req.subject
     ).all()
     
@@ -92,12 +99,17 @@ def generate_session_assessment(req: SessionQuizRequest, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Thiếu thông tin môn học hoặc chủ đề.")
 
     user = db.query(User).filter(User.id == req.user_id).first()
-    if not user or not user.class_id:
+    if not user:
         raise HTTPException(status_code=400, detail="Người dùng không hợp lệ.")
 
-    # Lấy tài liệu của lớp
+    # TÌM LỚP HỌC MÀ SINH VIÊN ĐÃ THAM GIA ĐÚNG VỚI MÔN NÀY
+    target_class = next((c for c in getattr(user, 'enrolled_classes', []) if c.subject == req.subject), None)
+    if not target_class:
+        raise HTTPException(status_code=400, detail=f"Bạn chưa tham gia lớp học nào cho môn '{req.subject}'.")
+
+    # LẤY TÀI LIỆU CỦA ĐÚNG LỚP ĐÓ
     allowed_docs = db.query(Document).filter(
-        Document.class_id == user.class_id,
+        Document.class_id == target_class.id,
         Document.subject == req.subject
     ).all()
     allowed_filenames = [doc.filename for doc in allowed_docs]
@@ -121,9 +133,9 @@ def generate_session_assessment(req: SessionQuizRequest, db: Session = Depends(g
             subject=req.subject,
             content=q_data.get("content", ""),
             options=json.dumps(q_data.get("options", []), ensure_ascii=False),
-            correct_answer=q_data.get("correct_label", "A"), # Trả về A, B, C, D
+            correct_answer=q_data.get("correct_label", "A"), 
             explanation=q_data.get("explanation", ""),
-            difficulty=req.level # Đánh dấu level của câu hỏi
+            difficulty=req.level 
         )
         db.add(new_q)
         db.commit()
@@ -150,7 +162,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
     old_level = profile.current_level if profile else "Beginner"
 
-    # 1. Gọi AssessmentAgent chấm điểm (Giữ lại để agent lưu log hoặc ghi nhận lịch sử nội bộ nếu cần)
+    # 1. Gọi AssessmentAgent chấm điểm
     answers_list = [{"question_id": a.question_id, "selected_option": a.selected_option} for a in req.answers]
     agent = AssessmentAgent(db)
     result = agent.submit_assessment(req.user_id, req.subject, answers_list)
@@ -200,7 +212,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     score_percent = round((correct_count / total_q * 100), 2) if total_q > 0 else 0.0
 
     # ==============================================================
-    # 3. GỌI PROFILING AGENT ĐỂ CHỐT LEVEL THEO TOÁN HỌC (ĐÃ FIX)
+    # 3. GỌI PROFILING AGENT ĐỂ CHỐT LEVEL THEO TOÁN HỌC
     # ==============================================================
     profiler = ProfilingAgent(db)
     calculated_level = profiler.classify_learner(correct_count, total_q, req.subject, req.user_id)
@@ -218,13 +230,17 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     
     if not roadmap:
         user_obj = db.query(User).filter(User.id == req.user_id).first()
-        allowed_docs = db.query(Document).filter(Document.class_id == user_obj.class_id, Document.subject == req.subject).all()
-        allowed_filenames = [doc.filename for doc in allowed_docs]
+        target_class = next((c for c in getattr(user_obj, 'enrolled_classes', []) if c.subject == req.subject), None)
+        
+        allowed_filenames = []
+        if target_class:
+            allowed_docs = db.query(Document).filter(Document.class_id == target_class.id, Document.subject == req.subject).all()
+            allowed_filenames = [doc.filename for doc in allowed_docs]
 
         adaptive_agent = AdaptiveAgent(db)
         
         try:
-            # ÉP CON AI VẼ ROADMAP THEO ĐÚNG LEVEL ĐÃ TÍNH TOÁN (new_level)
+            # ÉP CON AI VẼ ROADMAP THEO ĐÚNG LEVEL ĐÃ TÍNH TOÁN
             adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level=new_level)
             msg = f"Đã thiết lập lộ trình học dựa trên trình độ {new_level} của bạn."
         except Exception as e:
@@ -249,11 +265,14 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             is_passed = False
             msg = "Điểm chưa đạt (cần tối thiểu 60%). Hãy ôn tập lại toàn bộ kiến thức và thử lại nhé!"
 
-    # 5. Lưu Lịch sử bài làm
+    # ==============================================================
+    # 5. LƯU LỊCH SỬ BÀI LÀM (KÈM THEO test_type ĐỂ TÍNH TEST SCORE)
+    # ==============================================================
     history = AssessmentHistory(
         subject=req.subject,
         user_id=req.user_id, 
         score=score_percent,
+        test_type=req.test_type, # ĐÃ LƯU LOẠI BÀI KIỂM TRA
         level_at_time=new_level,
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
@@ -316,6 +335,7 @@ def get_learning_roadmap(subject: str, user_id: int, db: Session = Depends(get_d
         "progress_percent": progress 
     }
 
+# 👇 ĐÃ BỔ SUNG TRƯỜNG test_type VÀO KẾT QUẢ TRẢ VỀ
 @router.get("/history/{subject}")
 def get_evaluation_history(subject: str, user_id: int, db: Session = Depends(get_db)):
     history_records = db.query(AssessmentHistory)\
@@ -338,6 +358,7 @@ def get_evaluation_history(subject: str, user_id: int, db: Session = Depends(get
             "level": h.level_at_time,
             "duration": h.duration_seconds,
             "trend": trend,
+            "test_type": h.test_type, # BỔ SUNG TRƯỜNG NÀY
             "effort": min(100, int((h.duration_seconds / 300) * 100)) if h.duration_seconds else 0
         })
     processed_history.reverse()

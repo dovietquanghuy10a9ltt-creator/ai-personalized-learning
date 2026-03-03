@@ -9,7 +9,8 @@ import {
   Loader2, 
   Eye, 
   EyeOff,
-  ChevronLeft
+  ChevronLeft,
+  IdCard // 👇 ĐÃ THÊM: Icon cho ô nhập MSSV
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
@@ -26,7 +27,8 @@ export default function AuthPage() {
     email: '',
     password: '',
     fullname: '',
-    role: 'student' // ÉP CỨNG: Bất cứ ai đăng ký ở ngoài đều là học sinh
+    role: 'student', // ÉP CỨNG: Bất cứ ai đăng ký ở ngoài đều là học sinh
+    student_id: '' // 👇 ĐÃ THÊM: Trường lưu MSSV
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +52,11 @@ export default function AuthPage() {
         localStorage.setItem("role", res.data.role);
         localStorage.setItem("fullname", res.data.fullname);
         localStorage.setItem("userId", res.data.userId);
+        
+        // 👇 ĐÃ THÊM: Lưu MSSV vào LocalStorage nếu backend trả về
+        if (res.data.studentId) {
+          localStorage.setItem("studentId", res.data.studentId);
+        }
 
         toast.success(`Chào mừng ${res.data.fullname} quay trở lại!`);
         
@@ -110,19 +117,37 @@ export default function AuthPage() {
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           {!isLogin && (
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Họ và tên</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  type="text"
-                  required
-                  placeholder="Họ và tên của bạn"
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all text-sm font-bold placeholder:text-slate-300"
-                  onChange={(e) => setFormData({...formData, fullname: e.target.value})}
-                />
+            <>
+              {/* Ô nhập Họ và Tên */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Họ và tên</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Họ và tên của bạn"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all text-sm font-bold placeholder:text-slate-300"
+                    onChange={(e) => setFormData({...formData, fullname: e.target.value})}
+                  />
+                </div>
               </div>
-            </div>
+
+              {/* 👇 ĐÃ THÊM: Ô nhập MSSV */}
+              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Mã số sinh viên (MSSV)</label>
+                <div className="relative">
+                  <IdCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: 20210123"
+                    className="w-full pl-12 pr-4 py-4 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white outline-none transition-all text-sm font-bold placeholder:text-slate-300 uppercase"
+                    onChange={(e) => setFormData({...formData, student_id: e.target.value})}
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           <div className="space-y-1.5">

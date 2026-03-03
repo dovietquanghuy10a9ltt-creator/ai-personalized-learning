@@ -1,10 +1,11 @@
 "use client";
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
-import { UploadCloud, FileText, Loader2, X, CheckCircle2, ChevronDown, BrainCircuit } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, X, CheckCircle2, ChevronDown, AlertCircle } from 'lucide-react';
 
-const SUBJECTS = [
+// 👇 DANH SÁCH 15 MÔN HỌC GỐC ĐỂ RẢI VÀO DROPDOWN
+const ALL_SUBJECTS = [
   "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
   "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
   "Cấu trúc dữ liệu và giải thuật", "Hệ cơ sở dữ liệu", "Kiến trúc máy tính", 
@@ -12,23 +13,48 @@ const SUBJECTS = [
   "PP lập trình hướng đối tượng", "Kỹ thuật truyền thông", "Cơ sở hệ điều hành"
 ];
 
+interface Classroom {
+  id: number;
+  name: string;
+  subject: string;
+  class_code: string;
+}
+
 interface FileUploaderProps {
   onUploadSuccess?: () => void;
   teacherId: string | null;
-  classId: number | null;
+  classId?: number | null; 
+  externalClasses?: Classroom[]; 
 }
 
-export default function FileUploader({ onUploadSuccess, teacherId, classId }: FileUploaderProps) {
+export default function FileUploader({ onUploadSuccess, teacherId, classId, externalClasses = [] }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle');
-  const [selectedSubject, setSelectedSubject] = useState("");
+  
+  // State chỉ cần lưu Môn học được chọn (vì Lớp đã được fix cứng từ bên ngoài)
+  const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [isDragActive, setIsDragActive] = useState(false);
+
+  // Mặc định lấy môn học của lớp đang chọn ở bên trái
+  useEffect(() => {
+      if (classId && externalClasses && externalClasses.length > 0 && !file) {
+          const currentClass = externalClasses.find(c => c.id === classId);
+          if (currentClass) {
+              setSelectedSubject(currentClass.subject);
+          }
+      }
+  }, [classId, externalClasses, file]);
 
   const processFile = async (selectedFile: File) => {
     if (!selectedFile) return;
+
+    if (!classId) {
+        toast.error("Vui lòng chọn một lớp học ở danh sách bên trái trước khi nạp tài liệu.");
+        return;
+    }
 
     const validTypes = ['.pdf', '.docx', '.txt', '.pptx'];
     const fileExt = "." + selectedFile.name.split('.').pop()?.toLowerCase();
@@ -39,7 +65,6 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
 
     setFile(selectedFile);
     setIsAnalyzing(true);
-    setSelectedSubject("");
     setProcessingStage('idle');
     setUploadProgress(0);
 
@@ -50,16 +75,17 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
       const res = await axios.post("http://localhost:8000/api/upload/analyze-subject", formData);
       const suggested = res.data.suggested_subject;
       
-      // XỬ LÝ AN TOÀN CHO THẺ SELECT: 
-      // Chỉ gán nếu môn AI gợi ý có trong danh sách, nếu không thì gán "Khác"
-      if (suggested && SUBJECTS.includes(suggested)) {
+      if (suggested && ALL_SUBJECTS.includes(suggested)) {
+          // AI đoán được môn -> Nhét môn đó vào Dropdown luôn
           setSelectedSubject(suggested);
+          toast.success(`AI dự đoán tài liệu này thuộc môn: ${suggested}.`);
       } else {
-          setSelectedSubject("Khác");
+          // AI đoán tào lao -> Báo lỗi và để giáo viên tự chọn từ 15 môn
+          toast.error(`AI đoán là: ${suggested || 'Không rõ'}. Hãy tự chọn lại môn đúng ở Dropdown nhé!`);
       }
     } catch (error) {
       console.error(error);
-      setSelectedSubject("Khác");
+      toast.error("AI đang bận, vui lòng tự chọn môn học thủ công.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -71,33 +97,22 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(true);
+    e.preventDefault(); e.stopPropagation(); setIsDragActive(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
+    e.preventDefault(); e.stopPropagation(); setIsDragActive(false);
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-
+    e.preventDefault(); e.stopPropagation(); setIsDragActive(false);
     const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles.length > 0) {
-      processFile(droppedFiles[0]);
-    }
-  }, []);
+    if (droppedFiles && droppedFiles.length > 0) processFile(droppedFiles[0]);
+  }, [classId]);
 
   const handleConfirmUpload = async () => {
-    if (!file || !selectedSubject) return;
-    
-    if (!classId) {
-        toast.error("Lỗi: Vui lòng chọn một lớp học trước khi nạp tài liệu!");
+    if (!file || !classId || !selectedSubject) {
+        toast.error("Vui lòng đảm bảo đã chọn đủ Môn học!");
         return;
     }
 
@@ -107,10 +122,9 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("manual_subject", selectedSubject);
-    
+    formData.append("manual_subject", selectedSubject); // Truyền môn học mà giáo viên đã chốt
     if (teacherId) formData.append("teacher_id", teacherId);
-    formData.append("class_id", classId.toString());
+    formData.append("class_id", classId.toString()); // Truyền class_id của lớp đang chọn bên trái
 
     try {
       await axios.post("http://localhost:8000/api/upload/upload", formData, {
@@ -125,10 +139,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
       
       setProcessingStage('done');
       toast.success("Đã nạp tri thức riêng cho lớp học này!");
-
-      if (onUploadSuccess) {
-        onUploadSuccess();
-      }
+      if (onUploadSuccess) onUploadSuccess();
 
     } catch (error) {
       toast.error("Lỗi upload tài liệu vào lớp học.");
@@ -140,9 +151,13 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
 
   const removeFile = () => {
     setFile(null);
-    setSelectedSubject("");
     setProcessingStage('idle');
     setUploadProgress(0);
+    // Khi xóa file, reset lại môn học về môn gốc của lớp
+    if (classId && externalClasses) {
+        const currentClass = externalClasses.find(c => c.id === classId);
+        if (currentClass) setSelectedSubject(currentClass.subject);
+    }
   };
 
   return (
@@ -153,22 +168,27 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`flex flex-col items-center justify-center w-full h-44 border border-dashed rounded-lg cursor-pointer transition-all bg-white group
-            ${isDragActive 
-              ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' 
-              : 'border-slate-300 hover:bg-slate-50 hover:border-indigo-500'
-            }`}
+            ${isDragActive ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' : 'border-slate-300 hover:bg-slate-50 hover:border-indigo-500'}
+            ${!classId ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
         >
           <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
-            <div className={`p-3 border rounded-full mb-3 shadow-sm transition-transform
-                ${isDragActive ? 'bg-white border-indigo-200 scale-110' : 'bg-white border-slate-100 group-hover:scale-110'}`}>
-                <UploadCloud className={`w-5 h-5 text-indigo-600`} />
+            <div className={`p-3 border rounded-full mb-3 shadow-sm transition-transform ${isDragActive ? 'bg-white border-indigo-200 scale-110' : 'bg-white border-slate-100 group-hover:scale-110'}`}>
+                <UploadCloud className={`w-5 h-5 ${!classId ? 'text-slate-400' : 'text-indigo-600'}`} />
             </div>
-            <p className="text-sm text-slate-600 font-medium">
-              <span className="font-bold text-indigo-600">Click</span> hoặc kéo thả tài liệu
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">LỚP ID: {classId || "Chưa chọn"}</p>
+            
+            {!classId ? (
+                <div className="text-center">
+                    <p className="text-sm font-bold text-red-500 flex items-center gap-1 justify-center"><AlertCircle size={14}/> Chưa chọn lớp học</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase">Vui lòng chọn lớp bên trái trước khi nạp tài liệu</p>
+                </div>
+            ) : (
+                <>
+                    <p className="text-sm text-slate-600 font-medium"><span className="font-bold text-indigo-600">Click</span> hoặc kéo thả tài liệu</p>
+                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">Hỗ trợ PDF, DOCX, PPTX</p>
+                </>
+            )}
           </div>
-          <input type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx,.txt,.pptx" />
+          <input type="file" className="hidden" onChange={handleFileChange} accept=".pdf,.docx,.txt,.pptx" disabled={!classId} />
         </label>
       ) : (
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
@@ -179,7 +199,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate max-w-[200px]">{file.name}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">Lớp ID: {classId}</p>
+                        <p className="text-[10px] text-slate-500 font-medium">Sẵn sàng phân tích</p>
                     </div>
                 </div>
                 {!isUploading && processingStage !== 'done' && (
@@ -198,23 +218,21 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
                 ) : processingStage !== 'done' ? (
                     <div className="space-y-1.5">
                         <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
-                            <span>Môn học</span>
-                            <span className="flex items-center gap-1 text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                <BrainCircuit className="w-3 h-3" /> AI Gợi ý
-                            </span>
+                            <span>XÁC NHẬN MÔN HỌC CHO TÀI LIỆU</span>
                         </label>
+                        
                         <div className="relative">
+                            {/* 👇 DROPDOWN ĐÃ ĐƯỢC CHUYỂN SANG MẢNG ALL_SUBJECTS (15 MÔN HỌC) */}
                             <select 
                                 value={selectedSubject}
                                 onChange={(e) => setSelectedSubject(e.target.value)}
                                 disabled={isUploading}
-                                className="w-full p-2.5 pl-3 pr-8 bg-white border border-slate-300 rounded-md text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all cursor-pointer hover:border-slate-400"
+                                className={`w-full p-2.5 pl-3 pr-8 bg-white border rounded-md text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none appearance-none transition-all cursor-pointer ${selectedSubject ? 'border-indigo-300 text-indigo-700' : 'border-slate-300 text-slate-800'}`}
                             >
-                                <option value="" disabled>-- Chọn môn học --</option>
-                                {SUBJECTS.map(sub => (
+                                <option value="" disabled>-- Hãy chọn môn học --</option>
+                                {ALL_SUBJECTS.map(sub => (
                                     <option key={sub} value={sub}>{sub}</option>
                                 ))}
-                                <option value="Khác">Khác</option>
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                         </div>
@@ -232,7 +250,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
                 {isUploading && (
                     <div className="space-y-1.5 pt-2">
                         <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
-                            <span>{processingStage === 'uploading' ? "Uploading..." : "Processing..."}</span>
+                            <span>{processingStage === 'uploading' ? "Đang đẩy dữ liệu..." : "Đang tạo Vector..."}</span>
                             <span>{uploadProgress}%</span>
                         </div>
                         <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden relative">
@@ -250,7 +268,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
                         disabled={isAnalyzing || !selectedSubject}
                         className="w-full py-2.5 bg-slate-900 text-white rounded-md text-xs font-bold uppercase tracking-widest hover:bg-black transition-all shadow-sm active:scale-95 disabled:opacity-50 mt-2"
                     >
-                        Xác nhận nạp cho lớp {classId}
+                        Xác nhận nạp tài liệu
                     </button>
                 )}
 
@@ -259,7 +277,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId }: Fi
                         onClick={removeFile}
                         className="w-full py-2.5 bg-white border border-slate-300 text-slate-600 rounded-md text-xs font-bold uppercase tracking-widest hover:bg-slate-50 transition-all mt-2"
                     >
-                        Nạp thêm tài liệu
+                        Nạp thêm tài liệu khác
                     </button>
                 )}
             </div>
