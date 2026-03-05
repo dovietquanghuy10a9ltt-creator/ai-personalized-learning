@@ -17,7 +17,7 @@ class AdaptiveAgent:
             raise ValueError("Cần cấu hình GROQ_KEY_ADAPTIVE trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant"
+        self.model = "llama-3.3-70b-versatile"
         
         # Kết nối tới Vector Database (ChromaDB)
         self.vector_store = get_vector_store()
@@ -26,17 +26,14 @@ class AdaptiveAgent:
     # 1. HÀM SINH LỘ TRÌNH HỌC (ROADMAP)
     # ==========================================
     def generate_overall_roadmap(self, user_id: int, subject: str, allowed_filenames: list = None, force_level: str = None):
-        # 1. Xác định trình độ
         current_level = force_level
         if not current_level:
             profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
             current_level = profile.current_level if profile else "Beginner"
 
-        # 2. RAG ĐỘNG: LẤY TÀI LIỆU TRỌNG TÂM THEO TRÌNH ĐỘ
         context_summary = ""
         if allowed_filenames:
             try:
-                # Tìm kiếm thay đổi tùy vào Level để tránh lấy lại Mục lục cơ bản
                 if current_level == "Advanced":
                     search_query = f"Kiến thức nâng cao, chuyên sâu, thiết kế hệ thống, bảo mật, tối ưu hóa, giao thức phức tạp của môn {subject}"
                 elif current_level == "Intermediate":
@@ -44,48 +41,43 @@ class AdaptiveAgent:
                 else:
                     search_query = f"Mục lục, giới thiệu, các khái niệm cơ bản, tổng quan của môn {subject}"
 
+                # Tăng k lên 25 để AI nhìn được bức tranh toàn cảnh cuốn giáo trình
                 docs = self.vector_store.similarity_search(
                     search_query, 
-                    k=15, 
+                    k=25, 
                     filter={"source": {"$in": allowed_filenames}}
                 )
                 context_summary = "\n".join([doc.page_content for doc in docs])
             except Exception as e:
                 print(f"⚠️ Lỗi trích xuất chủ đề: {e}")
 
-        # 3. PROMPT THIẾT KẾ LỘ TRÌNH
         prompt = f"""
         BẠN LÀ CHUYÊN GIA THIẾT KẾ CHƯƠNG TRÌNH HỌC (CURRICULUM ARCHITECT).
-        
         MÔN HỌC: {subject}
         TRÌNH ĐỘ HỌC VIÊN HIỆN TẠI: {current_level.upper()}
         
-        TÀI LIỆU GIÁO VIÊN (NGUỒN THAM KHẢO DÀNH RIÊNG CHO TRÌNH ĐỘ NÀY):
-        {context_summary if context_summary else "Không có tài liệu."}
+        TÀI LIỆU GIÁO VIÊN (NGUỒN THAM KHẢO):
+        {context_summary[:12000] if context_summary else "Không có tài liệu."}
 
-        [CHIẾN LƯỢC ÉP KIỂU THEO TRÌNH ĐỘ - TUYỆT ĐỐI TUÂN THỦ]:
+        [CHIẾN LƯỢC ÉP KIỂU THEO TRÌNH ĐỘ]:
         Học viên đang ở trình độ **{current_level.upper()}**. Bạn PHẢI thiết kế ĐÚNG 11 SESSIONS (10 học + 1 thi).
 
         QUY TẮC NỘI DUNG TỪ SESSION 1 ĐẾN 10 (Lệnh sống còn):
-        - NẾU LEVEL BEGINNER: Dạy tuần tự từ đầu tài liệu. Bắt đầu bằng Giới thiệu, Khái niệm, Phân loại.
-        - NẾU LEVEL INTERMEDIATE: KHÔNG dạy bài Giới thiệu/Tổng quan. Bắt đầu ngay từ kiến thức vận dụng thực tế.
-        - NẾU LEVEL ADVANCED: 
-          1. BỎ QUA HOÀN TOÀN 50% nội dung đầu tiên của môn học.
-          2. NGHIÊM CẤM đưa vào lộ trình các bài có chữ: "Giới thiệu", "Tổng quan", "Cơ bản" (Cấm dạy lại LAN/WAN/WiFi cơ bản).
-          3. BẮT BUỘC 10 buổi học phải là các kiến thức KHÓ NHẤT, CHUYÊN SÂU NHẤT được trích xuất từ tài liệu ở trên.
+        - Bám sát hệ thống kiến thức trong tài liệu. 
+        - Phân bổ kiến thức logic từ Session 1 đến 10, không được lặp lại chủ đề.
+        - Mức Intermediate/Advanced: CẤM dạy lại "Giới thiệu/Tổng quan cơ bản". Đi thẳng vào kiến thức thực tế/chuyên sâu.
 
         QUY TẮC SESSION 11: 
         - Bắt buộc là: {{"session": 11, "topic": "KIỂM TRA TỔNG HỢP CUỐI KHÓA", "description": "Bài thi đánh giá toàn diện...", "focus_level": "{current_level.upper()}"}}
 
         [YÊU CẦU ĐẦU RA JSON]:
-        Bạn PHẢI viết chiến lược vào trường "strategy" (Ghi rõ bạn đã loại bỏ những kiến thức cơ bản nào) TRƯỚC KHI tạo mảng "roadmap".
         {{
-            "strategy": "Tôi đã loại bỏ các bài... và tập trung vào các kiến thức chuyên sâu như... vì học viên là Advanced.",
+            "strategy": "Ghi rõ chiến lược thiết kế...",
             "roadmap": [
                 {{
                     "session": 1,
                     "topic": "Tên bài học...",
-                    "description": "Mô tả chi tiết...",
+                    "description": "Mô tả chi tiết (Tối đa 20 từ)...",
                     "focus_level": "{current_level.upper()}"
                 }}
             ]
@@ -100,6 +92,7 @@ class AdaptiveAgent:
                 ],
                 model=self.model,
                 temperature=0.2, 
+                max_tokens=4000,
                 response_format={"type": "json_object"}
             )
             
@@ -126,19 +119,18 @@ class AdaptiveAgent:
             return []
 
     # ==========================================
-    # 2. HÀM GIA SƯ AI CHAT (Không đổi)
+    # 2. HÀM GIA SƯ AI CHAT 
     # ==========================================
     def chat_with_tutor(self, subject: str, user_message: str, roadmap_context: str, allowed_filenames: list = None, history: list = None):
-        if history is None:
-            history = []
-            
+        if history is None: history = []
+        
         context_docs = ""
         search_filter = {"subject": {"$eq": subject}}
         if allowed_filenames:
             search_filter = {"$and": [{"subject": {"$eq": subject}}, {"source": {"$in": allowed_filenames}}]}
 
         try:
-            docs = self.vector_store.similarity_search(user_message, k=4, filter=search_filter)
+            docs = self.vector_store.similarity_search(user_message, k=5, filter=search_filter)
             context_docs = "\n\n".join([doc.page_content for doc in docs])
         except Exception as e:
             context_docs = "Dữ liệu kiến thức đang được cập nhật."
@@ -149,19 +141,17 @@ class AdaptiveAgent:
         system_prompt = f"""BẠN LÀ MỘT GIA SƯ AI TƯƠNG TÁC 1-1 CỰC KỲ XUẤT SẮC CỦA MÔN {subject}. 
 TRÌNH ĐỘ HỌC VIÊN: {current_level}
 [NỘI DUNG BUỔI HỌC HÔM NAY]: {roadmap_context}
-[KIẾN THỨC TỪ TÀI LIỆU CỦA GIÁO VIÊN]: {context_docs}
+[KIẾN THỨC TỪ TÀI LIỆU CỦA GIÁO VIÊN]: {context_docs[:4000]}
 
 [NGUYÊN TẮC TỐI THƯỢNG]:
 - TUYỆT ĐỐI KHÔNG giảng bài dài dòng. Mỗi tin nhắn chỉ đưa ra MỘT mẩu kiến thức nhỏ gắn liền với MỘT câu hỏi gợi mở.
-- TUYỆT ĐỐI KHÔNG lặp lại câu hỏi đã hỏi.
-- NẾU ĐÂY LÀ BÀI "KIỂM TRA TỔNG HỢP CUỐI KHÓA": Hãy đóng vai người nhắc nhở ôn tập, động viên học viên làm bài Test qua bài để hoàn thành môn học. Không cần dạy kiến thức mới.
-- Nếu học sinh KHÔNG BIẾT: Hãy an ủi họ trước, sau đó đưa ví dụ thực tế.
+- NẾU ĐÂY LÀ BÀI "KIỂM TRA TỔNG HỢP CUỐI KHÓA": Hãy nhắc nhở ôn tập, động viên học viên làm bài Test qua bài.
 
-[PHONG CÁCH NGÔN NGỮ]: Ngắn gọn (tối đa 3-4 câu), thân thiện, năng động, kèm emoji.
+[PHONG CÁCH]: Ngắn gọn (tối đa 3-4 câu), thân thiện, năng động.
 """
 
         api_messages = [{"role": "system", "content": system_prompt}]
-        for msg in history:
+        for msg in history[-6:]: # Chỉ lấy 6 tin nhắn gần nhất để tối ưu context
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ["user", "assistant"] and content:
@@ -178,7 +168,7 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
             return f"❌ Gia sư AI đang bận truy xuất dữ liệu: {str(e)}"
 
     # ==========================================
-    # 3. HÀM SINH CÂU HỎI TRẮC NGHIỆM
+    # 3. HÀM SINH CÂU HỎI TRẮC NGHIỆM (BẢN PRO - CHỐNG HỌC VẸT)
     # ==========================================
     def generate_session_quiz(self, subject: str, session_topic: str, level: str, allowed_filenames: list = None):
         context_docs = ""
@@ -193,52 +183,54 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
 
         is_final_exam = "CUỐI KHÓA" in session_topic.upper() or "TỔNG HỢP" in session_topic.upper()
 
+        # PHÂN LUỒNG TÌM KIẾM ĐỂ TRÁNH LẠC ĐỀ
         if is_final_exam:
-            search_query = f"Toàn bộ kiến thức trọng tâm, các chương và khái niệm quan trọng nhất của môn {subject}"
-            topic_instruction = f"- Chủ đề kiểm tra: TỔNG ÔN CUỐI KHÓA (Hãy ra câu hỏi bao quát ngẫu nhiên TOÀN BỘ các chương của môn học, đánh giá toàn diện)."
+            # Bốc diện rộng toàn bộ các chương
+            search_query = f"Toàn bộ kiến thức trọng tâm, các khái niệm, bài tập, ứng dụng và tổng kết của môn {subject}"
+            topic_instruction = f"- Chủ đề: TỔNG ÔN CUỐI KHÓA (Lệnh: Bốc ngẫu nhiên kiến thức rải rác ở TẤT CẢ CÁC CHƯƠNG để kiểm tra toàn diện)."
             num_questions = 20
+            k_val = 30 # Lấy tận 30 mảnh kiến thức khác nhau
         else:
-            search_query = f"Kiến thức chi tiết về {session_topic} trong môn {subject}"
-            topic_instruction = f"- Chủ đề đang kiểm tra: {session_topic} (TUYỆT ĐỐI CHỈ HỎI KIẾN THỨC TRONG CHỦ ĐỀ NÀY)."
+            # Focus cực mạnh vào đúng 1 keyword
+            search_query = f"Kiến thức chuyên sâu, ví dụ thực tiễn, đoạn code, bài tập của chủ đề: {session_topic} trong môn {subject}"
+            topic_instruction = f"- Chủ đề: {session_topic} (Lệnh Sống Còn: TUYỆT ĐỐI CHỈ HỎI XOAY QUANH CHỦ ĐỀ NÀY, không hỏi lan man chương khác)."
             num_questions = 10
+            k_val = 20
 
         try:
-            docs = self.vector_store.similarity_search(search_query, k=15, filter=search_filter)
-            context_docs = "\n\n".join([doc.page_content for doc in docs])
+            docs = self.vector_store.similarity_search(search_query, k=k_val, filter=search_filter)
+            # Ép dung lượng nạp lên mức 15.000 ký tự để AI thông minh nhất có thể
+            context_docs = "\n\n".join([doc.page_content for doc in docs])[:15000] 
         except Exception as e:
+            print(f"❌ Lỗi RAG lấy tài liệu: {e}")
             context_docs = "Dữ liệu kiến thức đang được cập nhật."
 
         prompt = f"""
-        BẠN LÀ CHUYÊN GIA KHẢO THÍ CỰC KỲ KHẮT KHE.
-        NHIỆM VỤ: Soạn ĐÚNG {num_questions} câu hỏi trắc nghiệm ĐỂ KIỂM TRA năng lực học sinh.
-        
-        [THÔNG TIN BẮT BUỘC BÁM SÁT]:
+        BẠN LÀ CHUYÊN GIA KHẢO THÍ ĐẠI HỌC CỰC KỲ KHẮT KHE. NHIỆM VỤ: Soạn ĐÚNG {num_questions} câu hỏi trắc nghiệm trình độ {level.upper()}.
         - Môn học: {subject}
         {topic_instruction}
-        - Trình độ học sinh: {level.upper()}
 
-        [TÀI LIỆU CĂN CỨ]:
-        {context_docs if context_docs else "Sử dụng kiến thức chuẩn xác của bạn."}
+        [TÀI LIỆU CỐT LÕI (BẮT BUỘC BÁM SÁT)]:
+        {context_docs}
 
-        [QUY TẮC RA ĐỀ THEO LEVEL (BẮT BUỘC)]:
-        - NẾU LEVEL BEGINNER: Hỏi định nghĩa cơ bản, nhận biết cú pháp, khái niệm cốt lõi.
-        - NẾU LEVEL INTERMEDIATE: Bỏ qua định nghĩa. Hỏi cách vận dụng, phân biệt đúng sai, đoạn code/công thức lắt léo, hoặc luồng xử lý.
-        - NẾU LEVEL ADVANCED: Hỏi về tối ưu hóa, lỗi hệ thống, thiết kế kiến trúc hoặc tình huống thực tế phức tạp.
-
-        [QUY TẮC CHỐNG ĐÁP ÁN MẬP MỜ]:
-        1. TÍNH DUY NHẤT: Mỗi câu hỏi TUYỆT ĐỐI chỉ có 01 đáp án ĐÚNG NHẤT. 
-        2. TÍNH KHÁCH QUAN: 3 đáp án sai phải là SAI HOÀN TOÀN về mặt học thuật, không được "có vẻ đúng".
-        3. CHỐNG ẢO TƯỞNG: Bạn PHẢI tự suy luận lý do đúng/sai vào trường "explanation" TRƯỚC KHI kết xuất đáp án. Đảm bảo logic chặt chẽ.
+        [TIÊU CHUẨN CHẤT LƯỢNG ĐỀ THI (CHỐNG HỌC VẸT)]:
+        1. KHÔNG hỏi lý thuyết suông (Vd: "Định nghĩa là gì?", "Cấu trúc gồm mấy phần?"). Sinh viên Đại học cần tư duy!
+        2. BẮT BUỘC sử dụng Tình huống thực tiễn (Case study), Đoạn code/Công thức, hoặc Bài toán logic để sinh viên phân tích và giải quyết.
+        3. Phân cấp độ:
+           - BEGINNER: Nhận biết khái niệm thông qua ví dụ thực tế.
+           - INTERMEDIATE: Phân tích đúng sai, dự đoán kết quả, tìm lỗi sai.
+           - ADVANCED: Đánh giá, tối ưu hóa hệ thống, giải quyết tình huống hóc búa.
+        4. TÍNH KHÁCH QUAN: 1 đáp án ĐÚNG CHÍNH XÁC, 3 đáp án SAI NHƯNG CÓ VẺ ĐÚNG (bẫy nhiễu).
 
         [YÊU CẦU ĐẦU RA JSON]:
         {{
             "questions": [
                 {{
                     "id": 1,
-                    "content": "Nội dung câu hỏi ở mức độ {level.upper()}...",
+                    "content": "Tình huống / Đoạn mã / Câu hỏi tư duy...",
                     "options": ["A. Đáp án 1", "B. Đáp án 2", "C. Đáp án 3", "D. Đáp án 4"],
                     "correct_label": "A", 
-                    "explanation": "Giải thích chi tiết TẠI SAO đáp án này đúng..."
+                    "explanation": "Giải thích chi tiết vì sao đúng và phân tích bẫy sai..."
                 }}
             ]
         }}
@@ -247,17 +239,17 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
         try:
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a strict examiner. You MUST output exactly the requested number of questions in valid JSON format."},
+                    {"role": "system", "content": "You are a top-tier examiner. You output strict and valid JSON containing the exact number of requested questions."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
-                max_tokens=4000,
-                temperature=0.1, 
+                max_tokens=6000, # Bơm token để viết đề dài
+                temperature=0.3, # Tăng nhẹ độ sáng tạo để bớt rập khuôn
                 response_format={"type": "json_object"}
             )
             
             result = json.loads(chat_completion.choices[0].message.content)
             return result.get("questions", [])
         except Exception as e:
-            print(f"❌ Lỗi sinh đề thi theo bài: {e}")
+            print(f"❌ Lỗi sinh đề thi: {e}")
             return []

@@ -38,7 +38,7 @@ class ContentAgent:
             raise ValueError("Cần cấu hình GROQ_KEY_CONTENT trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant"
+        self.model = "llama-3.3-70b-versatile"
         
         self.vector_store = get_vector_store()
         self.text_splitter = RecursiveCharacterTextSplitter(

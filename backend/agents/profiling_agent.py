@@ -16,7 +16,7 @@ class ProfilingAgent:
             raise ValueError("Cần cấu hình GROQ_KEY_PROFILING trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant"
+        self.model = "llama-3.3-70b-versatile"
 
     def classify_learner(self, correct_count: int, total_questions: int, subject: str, user_id: int):
         """

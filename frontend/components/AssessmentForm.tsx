@@ -548,7 +548,7 @@ const AssessmentForm = () => {
              </div>
 
              <div className="p-6 md:p-8 bg-white">
-                <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-6 leading-relaxed">{currentQ.content}</h2>
+                <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap">{currentQ.content}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                    {currentQ.options.map((opt: string, idx: number) => {
                       const label = LABELS[idx]; 

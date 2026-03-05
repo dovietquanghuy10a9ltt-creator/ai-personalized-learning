@@ -26,7 +26,7 @@ export default function DocumentLibrary() {
     try {
       // Lấy classId động từ localStorage, nếu chưa có thì tạm dùng 2
       const classId = localStorage.getItem("classId") || "2"; 
-      const res = await axios.get(`http://localhost:8000/api/document/class-documents/${classId}`);
+      const res = await axios.get(`http://localhost:8000/api/documents/class-documents/${classId}`);
       setDocuments(res.data);
     } catch (error) {
       toast.error("Lỗi khi tải kho tài liệu");
@@ -43,7 +43,7 @@ export default function DocumentLibrary() {
     
     setDeleteId(id);
     try {
-      await axios.delete(`http://localhost:8000/api/document/delete/${id}`);
+      await axios.delete(`http://localhost:8000/api/documents/delete/${id}`);
       toast.success("Đã xóa tài liệu");
       // Cập nhật lại danh sách ngay lập tức ở giao diện
       setDocuments(documents.filter(d => d.id !== id));

@@ -13,7 +13,7 @@ class EvaluationAgent:
             raise ValueError("Cần cấu hình GROQ_KEY_EVALUATION trong file .env")
             
         self.client = Groq(api_key=self.api_key)
-        self.model = "llama-3.1-8b-instant" 
+        self.model = "llama-3.3-70b-versatile" 
         self.db = db_session
 
     # --- 1. HÀM CHẤM ĐIỂM CHI TIẾT ---

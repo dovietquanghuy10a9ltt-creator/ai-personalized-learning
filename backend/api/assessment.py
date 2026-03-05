@@ -37,7 +37,6 @@ class SubmitRequest(BaseModel):
     answers: List[AnswerSubmission]
     duration_seconds: int = 300 
     is_session_quiz: bool = False
-    # 👇 THÊM TRƯỜNG NÀY ĐỂ NHẬN LOẠI BÀI KIỂM TRA TỪ FRONTEND
     test_type: str = "baseline" 
 
 # --- 1. SINH ĐỀ THI ĐÁNH GIÁ TỔNG QUAN (ĐẦU VÀO) ---
@@ -79,6 +78,7 @@ def generate_quiz(req: QuizRequest, db: Session = Depends(get_db)):
             detail=f"Lớp học của bạn hiện chưa có tài liệu cho môn '{req.subject}'."
         )
 
+    # Gọi AssessmentAgent với cấu hình cực kỳ nghiêm ngặt
     agent = AssessmentAgent(db)
     questions = agent.get_or_create_quiz(
         subject=req.subject, 
@@ -335,7 +335,6 @@ def get_learning_roadmap(subject: str, user_id: int, db: Session = Depends(get_d
         "progress_percent": progress 
     }
 
-# 👇 ĐÃ BỔ SUNG TRƯỜNG test_type VÀO KẾT QUẢ TRẢ VỀ
 @router.get("/history/{subject}")
 def get_evaluation_history(subject: str, user_id: int, db: Session = Depends(get_db)):
     history_records = db.query(AssessmentHistory)\
@@ -358,7 +357,7 @@ def get_evaluation_history(subject: str, user_id: int, db: Session = Depends(get
             "level": h.level_at_time,
             "duration": h.duration_seconds,
             "trend": trend,
-            "test_type": h.test_type, # BỔ SUNG TRƯỜNG NÀY
+            "test_type": h.test_type, 
             "effort": min(100, int((h.duration_seconds / 300) * 100)) if h.duration_seconds else 0
         })
     processed_history.reverse()
