@@ -9,7 +9,7 @@ interface Document {
   filename: string;
   subject: string;
   upload_time: string;
-  class_id?: number; // Thêm class_id vào interface
+  class_id?: number; 
 }
 
 // 1. Khai báo Interface Props để nhận classId từ TeacherPage

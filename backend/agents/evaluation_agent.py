@@ -30,7 +30,7 @@ class EvaluationAgent:
 
         for ans in submission_answers:
             q_id = ans.question_id
-            user_choice = ans.selected_option # Ví dụ: "A" hoặc "A. Nội dung..."
+            user_choice = ans.selected_option 
             
             question = question_map.get(q_id)
             if not question:

@@ -1,13 +1,13 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse # 👇 Bổ sung thư viện tải file
+from fastapi.responses import FileResponse 
 from sqlalchemy.orm import Session
 from db.database import get_db
 from db import models
 from typing import Optional
 from datetime import timedelta
 
-# Import hàm lấy vector store từ chính module RAG của bạn
+# Import hàm lấy vector store
 from rag.vector_store import get_vector_store 
 
 router = APIRouter()
@@ -66,7 +66,7 @@ def delete_document(doc_id: int, db: Session = Depends(get_db)):
             except Exception as e:
                 print(f"❌ Lỗi khi xóa file vật lý: {e}")
 
-    # --- 2. XÓA TRI THỨC TRONG CHROMADB (Chọc thẳng vào Lõi) ---
+    # --- 2. XÓA TRI THỨC TRONG CHROMADB ---
     try:
         vector_store = get_vector_store()
         
@@ -157,7 +157,7 @@ def download_document(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Tài liệu không tồn tại")
         
-    # Trỏ đúng vào thư mục temp_uploads theo logic lưu file của bạn
+    # Trỏ đúng vào thư mục temp_uploads theo logic lưu file
     file_path = os.path.join("temp_uploads", doc.filename)
     
     if not os.path.exists(file_path):

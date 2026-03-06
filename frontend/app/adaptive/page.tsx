@@ -30,7 +30,7 @@ export default function AdaptiveLearningPage() {
   const [triggerInitialMessage, setTriggerInitialMessage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // FIX LỖI VÒNG LẶP: Dùng useRef thay vì useState để đếm giờ ngầm, không gây re-render
+  //Dùng useRef để đếm giờ ngầm, không gây re-render
   const userIdRef = useRef<number | null>(null);
 
   useEffect(() => {

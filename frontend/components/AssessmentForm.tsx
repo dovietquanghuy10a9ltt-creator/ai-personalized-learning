@@ -275,7 +275,7 @@ const AssessmentForm = () => {
     if (!userId) return;
     setLoading(true);
     
-    // 👇 FIX LỖI 422 BOOLEAN: Ép kiểu dứt khoát về true/false bằng Boolean()
+
     const hasTopic = Boolean(sessionTopic && typeof sessionTopic === 'string' && sessionTopic.trim() !== "" && sessionTopic !== "null" && sessionTopic !== "undefined");
 
     let testType = "baseline"; 
@@ -296,13 +296,14 @@ const AssessmentForm = () => {
         selected_option: opt
       })),
       duration_seconds: timer,
-      is_session_quiz: hasTopic, // Lúc này chắc chắn gửi lên là true hoặc false chuẩn
+      is_session_quiz: hasTopic,
       test_type: testType 
     };
 
     try {
       const res = await axios.post("http://localhost:8000/api/assessment/submit", submissionData);
       setResultData(res.data);
+      // Fetch lại roadmap để xem đã Tốt nghiệp hay đã Thăng cấp chưa
       await fetchRoadmap(subject); 
       setStep('result');
       localStorage.removeItem(STORAGE_KEY);
@@ -329,6 +330,9 @@ const AssessmentForm = () => {
   };
 
   const currentQ = questions[currentIndex];
+  
+  const safeOptions = currentQ && Array.isArray(currentQ.options) ? currentQ.options : [];
+  
   const progress = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
   const isPassed = resultData?.is_passed !== false;
   const progressVal = Number(roadmap?.progress_percent);
@@ -336,7 +340,6 @@ const AssessmentForm = () => {
 
   const displaySubjects = SUBJECTS.filter(s => enrolledSubjects.includes(s.name));
   
-  // Biến hỗ trợ hiển thị UI chuẩn xác
   const isRealSessionTopic = sessionTopic && sessionTopic !== "null" && sessionTopic !== "undefined" && sessionTopic.trim() !== "";
 
   return (
@@ -548,9 +551,11 @@ const AssessmentForm = () => {
              </div>
 
              <div className="p-6 md:p-8 bg-white">
-                <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap">{currentQ.content}</h2>
+                
+                <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap font-mono">{currentQ.content}</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                   {currentQ.options.map((opt: string, idx: number) => {
+                   
+                   {safeOptions.map((opt: string, idx: number) => {
                       const label = LABELS[idx]; 
                       const isSelected = answers[currentQ.id] === label;
                       const displayContent = cleanOptionText(opt);
@@ -581,10 +586,10 @@ const AssessmentForm = () => {
                       }
                       
                       return (
-                         <div key={idx} onClick={() => !reviewMode && setAnswers(prev => ({...prev, [currentQ.id]: label}))} className={`relative p-4 border rounded-xl transition-all flex items-start gap-3 ${cStyle}`}>
-                            <span className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-black mt-0.5 ${bStyle}`}>{label}</span>
-                            <span className={`text-sm font-medium leading-relaxed ${tStyle}`}>{displayContent}</span>
-                         </div>
+                          <div key={idx} onClick={() => !reviewMode && setAnswers(prev => ({...prev, [currentQ.id]: label}))} className={`relative p-4 border rounded-xl transition-all flex items-start gap-3 ${cStyle}`}>
+                             <span className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-black mt-0.5 ${bStyle}`}>{label}</span>
+                             <span className={`text-sm font-medium leading-relaxed whitespace-pre-wrap font-mono ${tStyle}`}>{displayContent}</span>
+                          </div>
                       );
                    })}
                 </div>
@@ -594,7 +599,7 @@ const AssessmentForm = () => {
                           <span className="text-lg">💡</span>
                           <strong className="text-blue-700 uppercase tracking-widest text-[10px]">Giải thích từ hệ thống</strong>
                       </div>
-                      <p className="text-sm text-blue-900 leading-relaxed font-medium">
+                      <p className="text-sm text-blue-900 leading-relaxed font-medium whitespace-pre-wrap">
                         {resultData?.results?.find((r: any) => r.question_id === currentQ.id)?.explanation || "Không có giải thích chi tiết cho câu hỏi này."}
                       </p>
                    </div>

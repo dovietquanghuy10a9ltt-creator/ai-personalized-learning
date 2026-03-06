@@ -4,7 +4,7 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { UploadCloud, FileText, Loader2, X, CheckCircle2, ChevronDown, AlertCircle } from 'lucide-react';
 
-// 👇 DANH SÁCH 15 MÔN HỌC GỐC ĐỂ RẢI VÀO DROPDOWN
+//DANH SÁCH 15 MÔN HỌC GỐC
 const ALL_SUBJECTS = [
   "Vật lý", "Đại số tuyến tính", "Giải tích", "Tin học đại cương", 
   "Chuyên đề giới thiệu ngành CNTT", "Ngôn ngữ lập trình C++", 
@@ -34,7 +34,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId, exte
   const [uploadProgress, setUploadProgress] = useState(0);
   const [processingStage, setProcessingStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle');
   
-  // State chỉ cần lưu Môn học được chọn (vì Lớp đã được fix cứng từ bên ngoài)
+  // State chỉ cần lưu Môn học được chọn
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [isDragActive, setIsDragActive] = useState(false);
 
@@ -222,7 +222,7 @@ export default function FileUploader({ onUploadSuccess, teacherId, classId, exte
                         </label>
                         
                         <div className="relative">
-                            {/* 👇 DROPDOWN ĐÃ ĐƯỢC CHUYỂN SANG MẢNG ALL_SUBJECTS (15 MÔN HỌC) */}
+                            {/*DROPDOWN ĐÃ ĐƯỢC CHUYỂN SANG MẢNG ALL_SUBJECTS (15 MÔN HỌC) */}
                             <select 
                                 value={selectedSubject}
                                 onChange={(e) => setSelectedSubject(e.target.value)}

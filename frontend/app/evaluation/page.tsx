@@ -238,7 +238,7 @@ export default function EvaluationPage() {
             </div>
         ) : (
             <>
-              {/* EVALUATION AGENT SCORE PANEL (THÊM MỚI) */}
+              {/* EVALUATION AGENT SCORE PANEL */}
               {evalScores && (
                  <div className="bg-gradient-to-r from-slate-900 to-indigo-900 p-8 rounded-3xl shadow-xl text-white relative overflow-hidden animate-in zoom-in duration-500">
                     <Sparkles className="absolute top-4 right-4 w-24 h-24 text-indigo-400 opacity-20" />

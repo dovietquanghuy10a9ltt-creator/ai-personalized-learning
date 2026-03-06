@@ -17,7 +17,7 @@ class TutorChatRequest(BaseModel):
     user_id: int 
     history: List[Dict[str, str]] = []
 
-# 👇 MODEL MỚI: NHẬN DỮ LIỆU THỜI GIAN HỌC TỪ FRONTEND
+# NHẬN DỮ LIỆU THỜI GIAN HỌC TỪ FRONTEND
 class StudySessionLog(BaseModel):
     user_id: int
     subject: str
@@ -46,7 +46,7 @@ def log_study_session(data: StudySessionLog, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Không thể lưu phiên học.")
 
 # ==========================================
-# 2. API: TẠO CHƯƠNG TRÌNH HỌC (ĐÃ SỬA LỖI N-N LỚP HỌC)
+# 2. API: TẠO CHƯƠNG TRÌNH HỌC
 # ==========================================
 @router.get("/recommend/{subject}")
 def get_learning_recommendation(
@@ -85,7 +85,7 @@ def get_learning_recommendation(
         raise HTTPException(status_code=500, detail="Không thể tạo chương trình học lúc này.")
 
 # ==========================================
-# 3. API: CHAT VỚI GIA SƯ AI (ĐÃ SỬA LỖI N-N LỚP HỌC)
+# 3. API: CHAT VỚI GIA SƯ AI
 # ==========================================
 @router.post("/chat")
 def chat_with_adaptive_tutor(req: TutorChatRequest, db: Session = Depends(get_db)):

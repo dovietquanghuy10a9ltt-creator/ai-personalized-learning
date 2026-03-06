@@ -217,7 +217,7 @@ def get_class_members(class_id: int, db: Session = Depends(get_db)):
     return result
 
 # ==========================================
-# 5. API: ĐUỔI HỌC SINH KHỎI LỚP 
+# 5. API: XÓA HỌC SINH KHỎI LỚP 
 # ==========================================
 @router.delete("/remove-student/{class_id}/{student_id}")
 def remove_student_from_class(class_id: int, student_id: int, db: Session = Depends(get_db)):

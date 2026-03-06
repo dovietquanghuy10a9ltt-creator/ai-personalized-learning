@@ -22,7 +22,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   
-  // Thêm biến isMounted để fix lỗi Hydration của Next.js khi dùng localStorage
+
   const [isMounted, setIsMounted] = useState(false);
 
   const [user, setUser] = useState<{ role: string | null; name: string | null; id: string | null }>({
@@ -34,7 +34,7 @@ export default function Navbar() {
   useEffect(() => {
     setIsMounted(true);
     
-    // 👇 CHUẨN HOÁ ROLE VỀ CHỮ THƯỜNG để tránh lỗi "Student" != "student" gây mất menu
+    //CHUẨN HOÁ ROLE VỀ CHỮ THƯỜNG để tránh lỗi "Student" != "student" gây mất menu
     const rawRole = localStorage.getItem("role");
     const role = rawRole ? rawRole.toLowerCase() : null; 
     
@@ -120,7 +120,7 @@ export default function Navbar() {
   if (!user.role) return null;
 
   return (
-    // 👇 SỬA LẠI CLASNAME TẠI ĐÂY: Thêm z-[9999] để đảm bảo Navbar luôn nằm trên cùng mọi trang
+    // Đảm bảo Navbar luôn nằm trên cùng mọi trang
     <nav className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-[9999]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager # Thêm thư viện quản lý vòng đời (lifespan)
-from api import assessment, upload, adaptive, stats, auth, classroom, admin, document, exam_generator # Thêm exam_generator
+from contextlib import asynccontextmanager # Thư viện quản lý vòng đời (lifespan)
+from api import assessment, upload, adaptive, stats, auth, classroom, admin, document, exam_generator
 # --- IMPORT DATABASE VÀ MODELS ---
 from db import models
 from db.database import engine, SessionLocal 
@@ -48,8 +48,7 @@ def create_initial_admin():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_initial_admin()
-    yield # App đang chạy
-    # Code dọn dẹp khi tắt app có thể để ở đây
+    yield 
 
 # Khởi tạo App với lifespan
 app = FastAPI(title="AI Personalized Learning API", lifespan=lifespan)
@@ -90,7 +89,6 @@ app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 # 7. Document (Quản lý Thư viện học liệu) 
-# 👇 ĐÃ SỬA CHỖ NÀY: prefix="/api/documents" (thêm chữ 's') để khớp với Frontend
 app.include_router(document.router, prefix="/api/documents", tags=["Document"])
 
 # 8. Exam Generator (Sinh đề thi file Word)

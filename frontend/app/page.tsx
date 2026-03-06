@@ -33,10 +33,10 @@ export default function HomePage() {
               Đăng nhập
             </Link>
             <Link 
-              href="/auth" 
+              href="/auth?mode=register" 
               className="px-5 py-2 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl active:scale-95"
             >
-              Tham gia ngay
+              Đăng ký
             </Link>
           </div>
         </div>
@@ -63,7 +63,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
             <Link 
-              href="/auth" 
+              href="/auth?mode=register" 
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-indigo-600 text-white rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-2xl shadow-indigo-100 group active:scale-95"
             >
               Bắt đầu hành trình <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />

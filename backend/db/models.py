@@ -34,7 +34,7 @@ class User(Base):
     assessment_histories = relationship("AssessmentHistory", back_populates="user")
     roadmaps = relationship("LearningRoadmap", back_populates="user")
     
-    # 👇 THÊM MỚI: QUAN HỆ ĐỂ TÍNH EFFORT SCORE (THỜI GIAN HỌC)
+    # QUAN HỆ ĐỂ TÍNH EFFORT SCORE (THỜI GIAN HỌC)
     study_sessions = relationship("StudySession", back_populates="user")
 
 # --- BẢNG LỚP HỌC ---
@@ -102,7 +102,7 @@ class LearnerProfile(Base):
     total_tests = Column(Integer, default=0)
     avg_score = Column(Float, default=0.0)
 
-# 👇 THÊM BẢNG NÀY ĐỂ TÍNH EFFORT SCORE (LƯU THỜI GIAN VÀ SỐ PHIÊN HỌC)
+# BẢNG NÀY ĐỂ TÍNH EFFORT SCORE (LƯU THỜI GIAN VÀ SỐ PHIÊN HỌC)
 class StudySession(Base):
     __tablename__ = "study_sessions"
     id = Column(Integer, primary_key=True, index=True)
@@ -122,7 +122,7 @@ class AssessmentHistory(Base):
     subject = Column(String, index=True)
     score = Column(Float)
     
-    # 👇 THÊM CỘT NÀY ĐỂ PHÂN BIỆT LOẠI BÀI KIỂM TRA
+    # CỘT NÀY ĐỂ PHÂN BIỆT LOẠI BÀI KIỂM TRA
     # Có thể là: "baseline" (đánh giá đầu vào), "chapter" (bài qua bài), "final" (bài cuối kỳ)
     test_type = Column(String, default="chapter", index=True) 
     

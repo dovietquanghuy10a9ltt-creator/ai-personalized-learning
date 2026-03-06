@@ -25,7 +25,7 @@ class UserRegister(BaseModel):
     email: str
     password: str
     role: str 
-    student_id: Optional[str] = None # 👇 THÊM MSSV
+    student_id: Optional[str] = None 
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
@@ -81,7 +81,7 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
     if user_exists:
         raise HTTPException(status_code=400, detail="Email này đã được đăng ký.")
     
-    # 👇 Kiểm tra trùng MSSV nếu có nhập
+    # Kiểm tra trùng MSSV nếu có nhập
     if user_in.student_id:
         student_exists = db.query(models.User).filter(models.User.student_id == user_in.student_id).first()
         if student_exists:
@@ -92,7 +92,7 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
         username=user_in.email,
         hashed_password=hash_password(user_in.password),
         role=final_role,
-        student_id=user_in.student_id # 👇 Lưu MSSV vào DB
+        student_id=user_in.student_id # Lưu MSSV vào DB
     )
     db.add(new_user)
     db.commit()
@@ -114,7 +114,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "role": user.role,
         "fullname": user.full_name,
         "userId": user.id,
-        "studentId": user.student_id # 👇 Trả về thêm MSSV cho Frontend nếu cần
+        "studentId": user.student_id # Trả về thêm MSSV cho Frontend nếu cần
     }
 
 @router.post("/change-password")

@@ -5,7 +5,7 @@ import { FileText, Trash2, Filter, Search, FolderOpen, Loader2, Download } from 
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 
-// 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU ĐỂ HẾT BÁO ĐỎ
+// 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU
 interface DocumentData {
   id: number;
   title: string;
@@ -136,7 +136,7 @@ export default function DocumentLibrary() {
                   </div>
                 </div>
 
-                {/* ĐÃ SỬA: Luôn hiển thị cụm nút bấm, thêm nút Tải xuống */}
+                {/* Luôn hiển thị cụm nút bấm, thêm nút Tải xuống */}
                 <div className="flex items-center gap-2 border-l border-slate-100 pl-4 ml-4">
                   <a 
                     href={`http://localhost:8000/${doc.file_path}`} 

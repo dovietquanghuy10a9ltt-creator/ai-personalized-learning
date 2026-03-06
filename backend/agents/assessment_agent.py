@@ -33,10 +33,9 @@ class AssessmentAgent:
 
     def get_or_create_quiz(self, subject: str, user_id: int, num_questions: int = 20, allowed_files: list = None):
         if not allowed_files:
-            print("⚠️ CẢNH BÁO: Không có danh sách file được phép cho lớp này.")
             return None
 
-        # --- MÁY HÚT BỤI TỰ ĐỘNG LỌC DỮ LIỆU RÁC CŨ ---
+        # ---QUÉT SẠCH CÂU HỎI RÁC DO LỖI CŨ ĐỂ LẠI ---
         existing_qs = self.db.query(QuestionBank).filter(
             QuestionBank.subject == subject,
             QuestionBank.source_file.in_(allowed_files)
@@ -44,15 +43,22 @@ class AssessmentAgent:
         
         if existing_qs:
             count_A = sum(1 for q in existing_qs if q.correct_answer == 'A')
-            has_garbage = any(len(str(q.options)) > 200 for q in existing_qs)
+            is_looping_garbage = sum(1 for q in existing_qs if "phương thức nào" in str(q.content).lower() or "đoạn mã sau" in str(q.content).lower()) > (len(existing_qs) * 0.4)
             
-            if has_garbage or (len(existing_qs) > 5 and (count_A / len(existing_qs) > 0.8)):
-                print(f"⚠️ Phát hiện câu hỏi rác/đáp án quá dài -> TỰ ĐỘNG RESET TRẮNG...")
+            has_garbage_options = False
+            for q in existing_qs:
+                if len(str(q.options)) < 40 or "A. A\"" in str(q.options) or "B. B\"" in str(q.options):
+                    has_garbage_options = True
+                    break
+            
+            if has_garbage_options or is_looping_garbage or (len(existing_qs) > 5 and (count_A / len(existing_qs) > 0.8)):
+                print(f"⚠️ Phát hiện bộ đề cũ bị lỗi (Lặp từ / Đáp án rỗng). Đang TIÊU DIỆT TỰ ĐỘNG...")
                 self.db.query(QuestionBank).filter(
                     QuestionBank.subject == subject,
                     QuestionBank.source_file.in_(allowed_files)
                 ).delete(synchronize_session=False)
                 self.db.commit()
+                self.db.expire_all()
 
         profile = self.db.query(LearnerProfile).filter_by(subject=subject, user_id=user_id).first()
         current_level = profile.current_level if profile else "Beginner"
@@ -64,8 +70,13 @@ class AssessmentAgent:
 
         if len(questions) < num_questions:
             needed = num_questions - len(questions)
-            print(f"🚀 AI 70B đang tổng hợp {needed} câu hỏi... (ĐANG BỊ ÉP KPI CHỐNG LƯỜI BIẾNG)")
-            self._generate_batch_safe(subject, current_level, needed + 3, allowed_files)
+            print(f"🚀 AI 70B đang tạo {needed} câu hỏi CHUYÊN NGHIỆP CHO GIÁO VIÊN...")
+            
+            success = self._generate_batch_safe(subject, current_level, needed, allowed_files)
+            if not success:
+                print("⚠️ Thử tạo lại với số lượng nhỏ hơn để tránh nổ Token API...")
+                self._generate_batch_safe(subject, current_level, min(10, needed), allowed_files)
+            
             questions = self.db.query(QuestionBank).filter(
                 QuestionBank.subject == subject,
                 QuestionBank.source_file.in_(allowed_files)
@@ -91,9 +102,10 @@ class AssessmentAgent:
         return final_result
 
     def _generate_batch_safe(self, subject: str, level: str, count: int, allowed_files: list = None):
+        if count <= 0: return True
         try:
             docs = self.vector_store.similarity_search(
-                f"Kiến thức chuyên sâu, bài toán tính toán, đoạn code mẫu và tình huống môn {subject}", 
+                f"Kiến thức trọng tâm, bài toán thực tế, code mẫu và ứng dụng môn {subject}", 
                 k=40, 
                 filter={"subject": {"$eq": subject}}
             )
@@ -107,78 +119,59 @@ class AssessmentAgent:
             random.shuffle(filtered_docs)
             primary_source_file = os.path.basename(filtered_docs[0].metadata.get("source", "")) if filtered_docs[0].metadata.get("source", "") else "Unknown"
             
-            context = "\n".join([d.page_content for d in filtered_docs[:25]])[:15000]
+            context = "\n".join([d.page_content for d in filtered_docs[:30]])[:20000]
 
-            # =====================================================================
-            # TẠO KPI ÉP BUỘC DỰA TRÊN MÔN HỌC (CHỐNG LƯỜI BIẾNG)
-            # =====================================================================
-            is_programming = any(kw in subject.lower() for kw in ["lập trình", "code", "đối tượng", "c++", "java", "python", "javascript", "html", "thuật toán"])
-            
-            num_practice = max(1, int(count * 0.45)) # Ép ít nhất 45% là Thực hành/Code
-            num_case_study = max(1, int(count * 0.35)) # Ép ít nhất 35% là Tình huống
-            
-            if is_programming:
-                kpi_rule = f"""
-                [KPI ÉP BUỘC CHỐNG LƯỜI BIẾNG - BẠN SẼ BỊ PHẠT NẾU KHÔNG ĐẠT 100%]:
-                Tổng số câu cần tạo là {count}. BẠN BẮT BUỘC PHẢI PHÂN BỔ CÁC LOẠI CÂU HỎI NHƯ SAU:
-                1. ĐÚNG {num_practice} CÂU phải là dạng "Thực hành / Bài tập". Dạng này BẮT BUỘC PHẢI CHỨA MỘT ĐOẠN CODE ngắn do chính bạn tự viết ra (Dùng \\n và \\t). Bắt sinh viên dự đoán kết quả in ra (Output) hoặc tìm lỗi biên dịch.
-                2. ĐÚNG {num_case_study} CÂU phải là dạng "Tình huống (Case study)". Đưa ra một yêu cầu thiết kế hệ thống phần mềm (VD: "Công ty cần thiết kế lớp NhanVien...") và hỏi cách vận dụng tính chất OOP.
-                3. Các câu còn lại mới được phép là "Lý thuyết suy luận" (so sánh sự khác biệt).
-                NẾU BẠN CHỈ TẠO RA TOÀN LÝ THUYẾT SUÔNG, ĐÓ LÀ MỘT SỰ THẤT BẠI NGHIÊM TRỌNG! BẠN PHẢI TỰ TẠO RA CODE!
-                """
-            else:
-                kpi_rule = f"""
-                [KPI ÉP BUỘC CHỐNG LƯỜI BIẾNG - BẠN SẼ BỊ PHẠT NẾU KHÔNG ĐẠT 100%]:
-                Tổng số câu cần tạo là {count}. BẠN BẮT BUỘC PHẢI PHÂN BỔ CÁC LOẠI CÂU HỎI NHƯ SAU:
-                1. ĐÚNG {num_case_study} CÂU phải là dạng "Tình huống (Case study)". Tự sáng tạo ra một câu chuyện, một ví dụ doanh nghiệp/đời sống thực tế để sinh viên giải quyết.
-                2. ĐÚNG {num_practice} CÂU phải là dạng "Thực hành / Bài tập". Bắt sinh viên tính toán số liệu, xử lý hiện tượng dựa trên công thức/quy luật trong tài liệu.
-                3. Các câu còn lại mới được phép là "Lý thuyết suy luận".
-                NẾU BẠN CHỈ TẠO RA TOÀN CÂU HỎI LÝ THUYẾT, ĐÓ LÀ MỘT SỰ THẤT BẠI NGHIÊM TRỌNG!
-                """
+            # BỘ ĐỆM AN TOÀN: Chỉ xin dư 3 câu để KHÔNG BAO GIỜ bị quá tải Token làm đứt gãy JSON
+            ask_count = count + 3 
 
             prompt = f"""
-            BẠN LÀ MỘT CHUYÊN GIA KHẢO THÍ SỐ 1 THẾ GIỚI, NỔI TIẾNG VÌ RA ĐỀ THI ĐA DẠNG VÀ THỰC TIỄN.
-            Nhiệm vụ: Soạn {count} câu trắc nghiệm môn "{subject}" (Trình độ: {level.upper()}).
-
-            [TÀI LIỆU NỀN TẢNG CHỈ ĐỂ LẤY Ý TƯỞNG KIẾN THỨC]: 
+            BẠN LÀ HỘI ĐỒNG RA ĐỀ THI XUẤT BẢN CẤP QUỐC GIA CHO MÔN: "{subject}" (Trình độ: {level.upper()}).
+            
+            [TÀI LIỆU CỐT LÕI MÔN HỌC]:
             {context}
 
-            {kpi_rule}
+            [🔴 CÁC LỆNH CẤM TUYỆT ĐỐI (HỦY DIỆT SỰ LẶP LẠI VÀ ẢO GIÁC)]:
+            1. CHỐNG LẶP LẠI (ANTI-LOOP): TẤT CẢ {ask_count} câu hỏi phải khai thác {ask_count} VẤN ĐỀ HOÀN TOÀN KHÁC NHAU. TUYỆT ĐỐI KHÔNG ĐƯỢC lặp lại bất kỳ câu hỏi hay đoạn code nào đã viết trước đó!
+            2. CẤM ĐÁP ÁN RỖNG: Mảng "options" PHẢI CHỨA TEXT ĐÁP ÁN THẬT SỰ (Ví dụ: "Lỗi biên dịch do...", "Kết quả là 55"). CẤM TUYỆT ĐỐI việc chỉ trả về ["A", "B", "C", "D"].
+            3. TIẾT KIỆM TOKEN: Phần "explanation" (giải thích) BẮT BUỘC NGẮN GỌN DƯỚI 20 TỪ. Trọng tâm, không dài dòng.
+            4. VĂN PHONG ĐA DẠNG: Đừng mãi dùng chữ "Đoạn mã sau...". Hãy dùng: "Xét hàm...", "Trong mô hình...", "Khi hệ thống...".
 
-            [THIẾT QUÂN LUẬT KHÁC]:
-            1. KHÔNG CHÉP PHẠT: KHÔNG ĐƯỢC bốc y nguyên câu chữ trong tài liệu ra làm câu hỏi. Phải dùng kiến thức đó để tự sáng tạo ra đoạn Code mới, hoặc Tình huống giả định mới.
-            2. CẤM HỎI ĐỊNH NGHĨA: Cấm các câu hỏi "... là gì?". Sinh viên cần tư duy ứng dụng.
-            3. ĐÁP ÁN SIÊU NGẮN GỌN: 4 lựa chọn (A, B, C, D) CHỈ ĐƯỢC chứa tối đa 15 từ. NGHIÊM CẤM nhét đoạn code, công thức dài vào đáp án. (Nếu câu hỏi hỏi kết quả code, đáp án chỉ là Output ngắn gọn).
+            [KPI ĐAN XEN TƯ DUY - PHẢI TẠO ĐÚNG {ask_count} CÂU]:
+            1. THỰC HÀNH/BÀI TẬP (35%):
+               - Lập trình/CNTT: Bắt buộc có mã code (dùng \\n). Hỏi về output, tìm lỗi, hoặc điền vào chỗ trống.
+               - Toán/Kinh tế: Đưa ra thông số, bắt tính toán.
+            2. TÌNH HUỐNG/CASE STUDY (35%): Xây dựng bối cảnh dự án, phần mềm thực tế. Yêu cầu chọn phương án thiết kế tốt nhất.
+            3. LÝ THUYẾT NÂNG CAO (30%): So sánh sự khác biệt bản chất. Phân tích ưu/nhược điểm. 
 
-            [CẤU TRÚC ĐẦU RA JSON BẮT BUỘC]:
+            [CẤU TRÚC JSON BẮT BUỘC]:
             {{
                 "questions": [
                     {{
-                        "question_type": "Thực hành / Bài tập" HOẶC "Tình huống (Case study)" HOẶC "Lý thuyết suy luận",
-                        "is_code_included": true HOẶC false,
-                        "question": "Nội dung câu hỏi (Nhớ dùng \\n nếu có chứa đoạn code, đoạn trích)...",
+                        "concept_tested": "Tên vấn đề cốt lõi (Không trùng lặp)",
+                        "question_type": "Thực hành / Bài tập" HOẶC "Tình huống (Case study)" HOẶC "Lý thuyết nâng cao",
+                        "is_code_included": true/false,
+                        "question": "Nội dung câu hỏi sâu sắc, dùng \\n để xuống dòng trình bày code/đoạn văn...",
                         "options": [
-                            "Đáp án ngắn 1", 
-                            "Đáp án ngắn 2", 
-                            "Đáp án ngắn 3", 
-                            "Đáp án sai phổ biến 4"
+                            "Nội dung đáp án 1 (Phải là text thực tế)", 
+                            "Nội dung đáp án 2 (Phải là text thực tế)", 
+                            "Nội dung đáp án 3 (Phải là text thực tế)", 
+                            "Nội dung đáp án 4 (Phải là text thực tế)"
                         ],
                         "correct_answer": "C",
-                        "explanation": "Giải thích chi tiết."
+                        "explanation": "Giải thích sắc bén dưới 20 từ."
                     }}
                 ]
             }}
-
-            Chỉ xuất JSON hợp lệ. Đảm bảo tỷ lệ các loại câu hỏi phải đúng như KPI đã giao. Bắt đầu bằng {{ "questions": [ ... ] }}. Đảm bảo đóng đủ ngoặc.
+            Chỉ xuất ra chuỗi JSON. KHÔNG CHÈN TEXT BÊN NGOÀI.
             """
 
             chat_completion = self.client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a precise JSON generator. Output raw JSON only. You MUST rigorously follow the exact ratio of practice/code/case-study questions specified in the prompt KPI."},
+                    {"role": "system", "content": f"You are a strict national-level examiner. Output valid JSON ONLY. Generate exactly {ask_count} highly diverse questions. NEVER output empty 'A,B,C,D' arrays in options. ZERO tolerance for repeating the same question."},
                     {"role": "user", "content": prompt}
                 ],
                 model=self.model,
-                temperature=0.6, 
+                temperature=0.8, # Tăng lên 0.8 để bắt nó phải bung sự sáng tạo
                 max_tokens=8000, 
                 response_format={"type": "json_object"}
             )
@@ -191,11 +184,25 @@ class AssessmentAgent:
 
             inserted_count = 0
             for item in questions_list:
-                q_text = item.get('question')
+                if inserted_count >= count:
+                    break
+                    
+                q_text = str(item.get('question', '')).strip()
                 raw_options = item.get('options', [])
                 correct_ans = str(item.get('correct_answer', 'A')).strip().upper()
                 
                 if not q_text or len(raw_options) < 4: continue 
+
+                # LỚP KHIÊN THÉP: Chặn đứng đáp án rỗng hoặc chỉ chứa chữ A,B,C,D
+                is_garbage = False
+                for opt in raw_options:
+                    clean_opt = re.sub(r'^[A-D][\.\:\-\)]\s*', '', str(opt)).strip()
+                    if clean_opt in ["A", "B", "C", "D", ""] or len(clean_opt) <= 1:
+                        is_garbage = True
+                        break
+                
+                if is_garbage:
+                    continue
 
                 match = re.search(r'([A-D])', correct_ans)
                 final_key = match.group(1) if match else "A"
@@ -206,14 +213,14 @@ class AssessmentAgent:
                     clean_text = re.sub(r'^[A-D][\.\:\-\)]\s*', '', str(raw_options[i])).strip()
                     final_options.append(f"{labels[i]}. {clean_text}")
 
-                if not self.db.query(QuestionBank).filter(QuestionBank.content == q_text.strip()).first():
+                if not self.db.query(QuestionBank).filter(QuestionBank.content == q_text).first():
                     db_q = QuestionBank(
                         subject=subject, 
                         difficulty=level, 
-                        content=q_text.strip(),
+                        content=q_text,
                         options=json.dumps(final_options, ensure_ascii=False), 
                         correct_answer=final_key,
-                        explanation=f"[{item.get('question_type', 'Phân tích')} | Có Code: {item.get('is_code_included', False)}] {item.get('explanation', '')}",
+                        explanation=f"[{item.get('question_type', 'Tư duy')}] {item.get('explanation', '')}",
                         is_used=False,
                         source_file=primary_source_file
                     )
@@ -224,7 +231,7 @@ class AssessmentAgent:
             return True
         except Exception as e:
             self.db.rollback()
-            print(f"❌ Lỗi sinh batch câu hỏi: {e}")
+            print(f"❌ Lỗi sinh batch câu hỏi (Nổ Token hoặc đứt gãy JSON): {e}")
             return False
 
     def submit_assessment(self, user_id: int, subject: str, user_answers: list):

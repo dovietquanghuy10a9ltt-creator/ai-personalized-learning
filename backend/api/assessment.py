@@ -149,7 +149,7 @@ def generate_session_assessment(req: SessionQuizRequest, db: Session = Depends(g
         
     return {"questions": saved_questions, "subject": req.subject}
 
-# --- 3. NỘP BÀI, CHẤM ĐIỂM & ĐIỀU HƯỚNG LỘ TRÌNH ---
+# --- 3. NỘP BÀI, CHẤM ĐIỂM & ĐIỀU HƯỚNG LỘ TRÌNH (THĂNG CẤP) ---
 @router.post("/submit")
 def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     if not req.answers:
@@ -170,7 +170,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     if not result:
         raise HTTPException(status_code=500, detail="Lỗi hệ thống: Không thể chấm điểm.")
 
-    # 2. Xử lý chấm điểm chi tiết (Đếm số câu đúng thật chính xác từ Database)
+    # 2. Xử lý chấm điểm chi tiết
     questions_db = db.query(QuestionBank).filter(
         QuestionBank.id.in_(question_ids),
         QuestionBank.subject == req.subject 
@@ -207,72 +207,97 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
             "correct_label": db_correct_label
         })
 
-    # TÍNH LẠI CHUẨN XÁC SỐ ĐIỂM TỪ ĐÁP ÁN ĐÃ CHECK
     total_q = len(questions_db)
     score_percent = round((correct_count / total_q * 100), 2) if total_q > 0 else 0.0
 
-    # ==============================================================
-    # 3. GỌI PROFILING AGENT ĐỂ CHỐT LEVEL THEO TOÁN HỌC
-    # ==============================================================
+    # 3. GỌI PROFILING AGENT ĐỂ CHỐT LEVEL
     profiler = ProfilingAgent(db)
     calculated_level = profiler.classify_learner(correct_count, total_q, req.subject, req.user_id)
 
-    # LOGIC: NẾU LÀ THI QUA BÀI -> GIỮ NGUYÊN LEVEL. NẾU LÀ THI ĐẦU VÀO -> LẤY LEVEL TỪ TOÁN HỌC
     if req.is_session_quiz:
         new_level = old_level
     else:
         new_level = calculated_level
 
-    # 4. Điều hướng Lộ trình
+    # ==============================================================
+    # 4. ĐIỀU HƯỚNG VÀ THĂNG CẤP LỘ TRÌNH (RPG LEVEL UP)
+    # ==============================================================
     roadmap = db.query(LearningRoadmap).filter_by(user_id=req.user_id, subject=req.subject).first()
     is_passed = True
     msg = ""
     
-    if not roadmap:
-        user_obj = db.query(User).filter(User.id == req.user_id).first()
-        target_class = next((c for c in getattr(user_obj, 'enrolled_classes', []) if c.subject == req.subject), None)
-        
-        allowed_filenames = []
-        if target_class:
-            allowed_docs = db.query(Document).filter(Document.class_id == target_class.id, Document.subject == req.subject).all()
-            allowed_filenames = [doc.filename for doc in allowed_docs]
+    # Chuẩn bị file tài liệu
+    user_obj = db.query(User).filter(User.id == req.user_id).first()
+    target_class = next((c for c in getattr(user_obj, 'enrolled_classes', []) if c.subject == req.subject), None)
+    allowed_filenames = []
+    if target_class:
+        allowed_docs = db.query(Document).filter(Document.class_id == target_class.id, Document.subject == req.subject).all()
+        allowed_filenames = [doc.filename for doc in allowed_docs]
 
-        adaptive_agent = AdaptiveAgent(db)
-        
+    adaptive_agent = AdaptiveAgent(db)
+    
+    if not roadmap:
         try:
-            # ÉP CON AI VẼ ROADMAP THEO ĐÚNG LEVEL ĐÃ TÍNH TOÁN
             adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level=new_level)
             msg = f"Đã thiết lập lộ trình học dựa trên trình độ {new_level} của bạn."
         except Exception as e:
             print(f"🚨 CẢNH BÁO AI CRASH ROADMAP: {e}")
-            msg = f"Đã ghi nhận điểm số. Đang chờ AI cập nhật lộ trình (Sẽ tự động thử lại sau)."
+            msg = f"Đã ghi nhận điểm số. Đang chờ AI cập nhật lộ trình."
             
     else:
-        # Nếu đã có Roadmap, cập nhật tiến độ
-        roadmap.level_assigned = new_level
         total_sessions = len(roadmap.roadmap_data) if roadmap.roadmap_data else 11
         
         if score_percent >= 60.0:
             is_passed = True
+            
+            # TRƯỜNG HỢP A: CHƯA HỌC HẾT 11 BÀI
             if roadmap.current_session < total_sessions:
                 roadmap.current_session += 1
                 msg = "Chúc mừng! Bạn đã mở khóa bài học tiếp theo."
+                
+            # TRƯỜNG HỢP B: ĐÃ QUA BÀI 11 -> THĂNG CẤP!
             else:
-                # KÍCH HOẠT TỐT NGHIỆP NẾU QUA BÀI CUỐI CÙNG
-                roadmap.is_completed = True 
-                msg = "🎉 XUẤT SẮC! Bạn đã vượt qua bài kiểm tra cuối khóa và chính thức HOÀN THÀNH môn học này!"
+                current_lvl = roadmap.level_assigned
+                
+                if current_lvl == "Beginner":
+                    roadmap.level_assigned = "Intermediate"
+                    roadmap.current_session = 1 
+                    new_level = "Intermediate"
+                    if profile: profile.current_level = "Intermediate"
+                    
+                    try:
+                        adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level="Intermediate")
+                        msg = "🔥 CHÚC MỪNG! Bạn đã phá đảo cấp độ Beginner. Hệ thống đã TỰ ĐỘNG THĂNG CẤP bạn lên INTERMEDIATE kèm lộ trình 11 bài mới!"
+                    except:
+                        msg = "🔥 Bạn đã thăng cấp INTERMEDIATE! Đang tạo lộ trình mới..."
+                        
+                elif current_lvl == "Intermediate":
+                    roadmap.level_assigned = "Advanced"
+                    roadmap.current_session = 1
+                    new_level = "Advanced"
+                    if profile: profile.current_level = "Advanced"
+                    
+                    try:
+                        adaptive_agent.generate_overall_roadmap(req.user_id, req.subject, allowed_filenames, force_level="Advanced")
+                        msg = "⚡ QUÁ ĐỈNH! Bạn đã thăng cấp lên ADVANCED (Cao thủ). Lộ trình Boss cuối đã mở khóa!"
+                    except:
+                        msg = "⚡ Bạn đã thăng cấp ADVANCED! Đang tạo lộ trình Boss..."
+                        
+                elif current_lvl == "Advanced":
+                    roadmap.is_completed = True 
+                    msg = "🏆 HUYỀN THOẠI! Bạn đã hoàn thành toàn bộ 11 bài của cấp độ cao nhất. Chính thức TỐT NGHIỆP môn học này!"
         else:
             is_passed = False
             msg = "Điểm chưa đạt (cần tối thiểu 60%). Hãy ôn tập lại toàn bộ kiến thức và thử lại nhé!"
 
     # ==============================================================
-    # 5. LƯU LỊCH SỬ BÀI LÀM (KÈM THEO test_type ĐỂ TÍNH TEST SCORE)
+    # 5. LƯU LỊCH SỬ BÀI LÀM
     # ==============================================================
     history = AssessmentHistory(
         subject=req.subject,
         user_id=req.user_id, 
         score=score_percent,
-        test_type=req.test_type, # ĐÃ LƯU LOẠI BÀI KIỂM TRA
+        test_type=req.test_type, 
         level_at_time=new_level,
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
@@ -282,25 +307,12 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     )
     db.add(history)
 
-    # 6. Cập nhật thống kê LearnerProfile
-    profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
-    
     if profile:
         prev_avg = profile.avg_score if profile.avg_score else 0.0
         profile.total_tests = (profile.total_tests or 0) + 1
         profile.avg_score = round(((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests, 2)
-        profile.current_level = new_level
-    else:
-        new_profile = LearnerProfile(
-            user_id=req.user_id,
-            subject=req.subject,
-            current_level=new_level,
-            total_tests=1,
-            avg_score=score_percent
-        )
-        db.add(new_profile)
     
-    db.commit() # LƯU TẤT CẢ
+    db.commit() 
     
     return {
         "level": new_level, 

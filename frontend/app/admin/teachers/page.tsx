@@ -41,7 +41,7 @@ export default function CreateTeacherPage() {
         body: JSON.stringify({
           fullname: fullname,
           email: email,
-          role: 'teacher' // Ép cứng luôn là giáo viên!
+          role: 'teacher' 
         })
       });
 
@@ -157,7 +157,7 @@ export default function CreateTeacherPage() {
           </form>
         </div>
 
-        {/* POPUP HIỂN THỊ MẬT KHẨU NGẪU NHIÊN - BẢN NÂNG CẤP */}
+        {/* POPUP HIỂN THỊ MẬT KHẨU NGẪU NHIÊN */}
         {newAccount && (
           <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-md w-full border border-slate-100 transform transition-all animate-in zoom-in-95 duration-300">

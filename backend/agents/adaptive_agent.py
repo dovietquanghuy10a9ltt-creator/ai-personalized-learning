@@ -168,7 +168,7 @@ TRÌNH ĐỘ HỌC VIÊN: {current_level}
             return f"❌ Gia sư AI đang bận truy xuất dữ liệu: {str(e)}"
 
     # ==========================================
-    # 3. HÀM SINH CÂU HỎI TRẮC NGHIỆM (BẢN PRO - CHỐNG HỌC VẸT)
+    # 3. HÀM SINH CÂU HỎI TRẮC NGHIỆM
     # ==========================================
     def generate_session_quiz(self, subject: str, session_topic: str, level: str, allowed_filenames: list = None):
         context_docs = ""

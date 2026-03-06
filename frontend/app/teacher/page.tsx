@@ -12,7 +12,7 @@ import {
   BookOpen,
   FolderOpen,
   Copy,
-  Trash2 // 👇 ĐÃ THÊM ICON TRASH
+  Trash2 
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
@@ -124,7 +124,7 @@ export default function TeacherPage() {
     }
   };
 
-  // 👇 THÊM HÀM XÓA LỚP HỌC
+  // HÀM XÓA LỚP HỌC
   const handleDeleteClass = async (e: React.MouseEvent, classIdToDelete: number, className: string) => {
     e.stopPropagation(); // Ngăn sự kiện click chọn lớp
     
@@ -256,7 +256,7 @@ export default function TeacherPage() {
                         </div>
                       </div>
                       
-                      {/* 👇 NÚT XÓA LỚP */}
+                      {/* NÚT XÓA LỚP */}
                       <div className="flex items-center gap-2">
                           <div 
                               onClick={(e) => handleDeleteClass(e, cls.id, cls.name)}

@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from typing import Optional
 from db.database import get_db
-# 👇 ĐÃ SỬA: Import thêm Classroom để lấy danh sách học sinh theo cơ chế N-N
 from db.models import AssessmentHistory, LearnerProfile, User, Classroom
 
 router = APIRouter()
@@ -60,7 +59,7 @@ async def get_stats(
             "date": h.timestamp.isoformat(),
             "duration": h.duration_seconds if h.duration_seconds else 0,
             "level": h.level_at_time if h.level_at_time else "Beginner",
-            "test_type": h.test_type, # 👇 FIX LỖI TẠI ĐÂY: Trả về test_type cho Frontend hiển thị đúng nhãn
+            "test_type": h.test_type, 
             "trend": round(float(trend), 1),
             "correct": h.correct_count
         })
@@ -122,7 +121,7 @@ def get_class_analytics(
             student_data[uid] = {"scores": [], "latest_level": "Beginner"}
         
         student_data[uid]["scores"].append(h.score or 0)
-        # Vì histories đã sắp xếp theo thời gian, biến này sẽ liên tục bị ghi đè cho đến bài thi cuối cùng (mới nhất)
+        # Vì histories đã sắp xếp theo thời gian, biến này sẽ liên tục bị ghi đè cho đến bài thi cuối cùng
         student_data[uid]["latest_level"] = h.level_at_time or "Beginner" 
 
         # Tính tổng giờ học theo ngày (Riêng thời lượng thì được phép cộng dồn không giới hạn)

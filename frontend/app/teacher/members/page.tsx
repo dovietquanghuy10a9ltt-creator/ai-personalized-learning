@@ -250,7 +250,7 @@ export default function ClassMembersPage() {
     toast.success("Đã xuất báo cáo Evaluation Excel!");
   };
 
-  // Hàm fomat giờ để sửa lỗi timezone lệch 7 tiếng
+  // Hàm fomat giờ
   const formatDateTime = (dateStr: string): string => {
     if (!dateStr) return "N/A";
     try {
