@@ -293,11 +293,14 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     # ==============================================================
     # 5. LƯU LỊCH SỬ BÀI LÀM
     # ==============================================================
+    # Đảm bảo frontend gửi đúng type, nếu gọi qua bài thì ép thành session
+    final_test_type = "session" if req.is_session_quiz and req.test_type == "baseline" else req.test_type
+
     history = AssessmentHistory(
         subject=req.subject,
         user_id=req.user_id, 
         score=score_percent,
-        test_type=req.test_type, 
+        test_type=final_test_type, 
         level_at_time=new_level,
         duration_seconds=req.duration_seconds,
         correct_count=correct_count,
@@ -306,13 +309,25 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         timestamp=datetime.utcnow()
     )
     db.add(history)
+    db.commit() # BẮT BUỘC COMMIT Ở ĐÂY ĐỂ EVALUATION AGENT ĐỌC ĐƯỢC RECORD MỚI NÀY
+    
+    # ==============================================================
+    # 🚀 6. GỌI EVALUATION AGENT ĐỂ TÍNH BỘ ĐIỂM CHUẨN 1-10-1
+    # ==============================================================
+    eval_agent = EvaluationAgent(db)
+    
+    performance_data = eval_agent.evaluate_performance(
+        user_id=req.user_id,
+        subject=req.subject,
+        current_score=score_percent,
+        test_type=final_test_type
+    )
 
     if profile:
-        prev_avg = profile.avg_score if profile.avg_score else 0.0
         profile.total_tests = (profile.total_tests or 0) + 1
-        profile.avg_score = round(((prev_avg * (profile.total_tests - 1)) + score_percent) / profile.total_tests, 2)
-    
-    db.commit() 
+        # 🔥 Lưu điểm Test Score ĐÃ LỌC (Không có bài đầu vào) làm Trung bình thật sự
+        profile.avg_score = performance_data["actual_test_score"]
+        db.commit()
     
     return {
         "level": new_level, 
@@ -321,7 +336,14 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
         "total_questions": total_q,
         "results": detailed_results,
         "is_passed": is_passed,
-        "message": msg
+        "message": msg,
+        
+        # Trả về bộ dữ liệu từ Evaluation Agent để hiển thị UI
+        "actual_test_score": performance_data["actual_test_score"],
+        "effort_score": performance_data["effort_score"],
+        "progress_score": performance_data["progress_score"],
+        "final_score": performance_data["final_score"],
+        "ai_feedback": performance_data["evaluation_msg"]
     }
 
 # --- CÁC API TRUY VẤN LỊCH SỬ VÀ ROADMAP ---
