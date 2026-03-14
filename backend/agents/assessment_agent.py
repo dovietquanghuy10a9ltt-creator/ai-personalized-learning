@@ -248,7 +248,7 @@ class AssessmentAgent:
                     score += 1
 
             percentage = (score / total_questions) * 100
-            level = "Advanced" if percentage >= 80 else "Intermediate" if percentage >= 50 else "Beginner"
+            level = "Advanced" if percentage > 70 else "Intermediate" if percentage >= 40 else "Beginner"
 
             profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
             if profile:
