@@ -162,13 +162,7 @@ def submit_quiz(req: SubmitRequest, db: Session = Depends(get_db)):
     profile = db.query(LearnerProfile).filter_by(subject=req.subject, user_id=req.user_id).first()
     old_level = profile.current_level if profile else "Beginner"
 
-    # 1. Gọi AssessmentAgent chấm điểm
-    answers_list = [{"question_id": a.question_id, "selected_option": a.selected_option} for a in req.answers]
-    agent = AssessmentAgent(db)
-    result = agent.submit_assessment(req.user_id, req.subject, answers_list)
     
-    if not result:
-        raise HTTPException(status_code=500, detail="Lỗi hệ thống: Không thể chấm điểm.")
 
     # 2. Xử lý chấm điểm chi tiết
     questions_db = db.query(QuestionBank).filter(

@@ -133,7 +133,7 @@ class AssessmentAgent:
             [🔴 CÁC LỆNH CẤM TUYỆT ĐỐI (HỦY DIỆT SỰ LẶP LẠI VÀ ẢO GIÁC)]:
             1. CHỐNG LẶP LẠI (ANTI-LOOP): TẤT CẢ {ask_count} câu hỏi phải khai thác {ask_count} VẤN ĐỀ HOÀN TOÀN KHÁC NHAU. TUYỆT ĐỐI KHÔNG ĐƯỢC lặp lại bất kỳ câu hỏi hay đoạn code nào đã viết trước đó!
             2. CẤM ĐÁP ÁN RỖNG: Mảng "options" PHẢI CHỨA TEXT ĐÁP ÁN THẬT SỰ (Ví dụ: "Lỗi biên dịch do...", "Kết quả là 55"). CẤM TUYỆT ĐỐI việc chỉ trả về ["A", "B", "C", "D"].
-            3. TIẾT KIỆM TOKEN: Phần "explanation" (giải thích) BẮT BUỘC NGẮN GỌN DƯỚI 20 TỪ. Trọng tâm, không dài dòng.
+            3. CHẤT LƯỢNG GIẢI THÍCH: Phần 'explanation' BẮT BUỘC phải giải thích chi tiết tại sao đúng/sai (ít nhất 2-3 câu). TUYỆT ĐỐI KHÔNG trả về từ khóa cộc lốc.
             4. VĂN PHONG ĐA DẠNG: Đừng mãi dùng chữ "Đoạn mã sau...". Hãy dùng: "Xét hàm...", "Trong mô hình...", "Khi hệ thống...".
 
             [KPI ĐAN XEN TƯ DUY - PHẢI TẠO ĐÚNG {ask_count} CÂU]:
@@ -158,7 +158,7 @@ class AssessmentAgent:
                             "Nội dung đáp án 4 (Phải là text thực tế)"
                         ],
                         "correct_answer": "C",
-                        "explanation": "Giải thích sắc bén dưới 20 từ."
+                        "explanation": "Giải thích chi tiết lý do chọn đáp án này, phân tích tối thiểu 2 câu."
                     }}
                 ]
             }}
@@ -234,34 +234,4 @@ class AssessmentAgent:
             print(f"❌ Lỗi sinh batch câu hỏi (Nổ Token hoặc đứt gãy JSON): {e}")
             return False
 
-    def submit_assessment(self, user_id: int, subject: str, user_answers: list):
-        try:
-            score = 0
-            total_questions = len(user_answers)
-            if total_questions == 0: return None
-
-            for ans in user_answers:
-                q_id = ans.get("question_id")
-                selected = ans.get("selected_option")
-                question = self.db.query(QuestionBank).filter_by(id=q_id, subject=subject).first()
-                if question and question.correct_answer == selected:
-                    score += 1
-
-            percentage = (score / total_questions) * 100
-            level = "Advanced" if percentage > 70 else "Intermediate" if percentage >= 40 else "Beginner"
-
-            profile = self.db.query(LearnerProfile).filter_by(user_id=user_id, subject=subject).first()
-            if profile:
-                profile.current_level = level
-            else:
-                profile = LearnerProfile(
-                    user_id=user_id, subject=subject, current_level=level, total_tests=0, avg_score=0.0
-                )
-                self.db.add(profile)
-
-            self.db.commit()
-            return {"score": percentage, "level": level}
-
-        except Exception as e:
-            self.db.rollback()
-            return None
+    
